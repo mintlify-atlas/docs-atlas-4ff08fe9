@@ -1,0 +1,129 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Android NDK",
+  "projectDescription": "A toolkit for building native C/C++ code into Android application packages as JNI shared libraries.",
+  "theme": "aspen",
+  "primaryColor": "#3DDC84",
+  "lightColor": "#7FE9AC",
+  "darkColor": "#1DB954",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/native-development",
+              "concepts/jni-overview",
+              "concepts/abis",
+              "concepts/bionic"
+            ]
+          },
+          {
+            "group": "Build Systems",
+            "pages": [
+              "build/overview",
+              "build/ndk-build",
+              "build/cmake",
+              "build/gradle-integration"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/audio",
+              "guides/graphics",
+              "guides/neural-networks",
+              "guides/debugging",
+              "guides/profiling"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/dynamic-linker",
+              "advanced/32bit-abi",
+              "advanced/common-problems",
+              "advanced/crashes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Native APIs",
+            "pages": [
+              "api/overview",
+              "api/android-specific",
+              "api/bionic-status",
+              "api/platform-apis"
+            ]
+          },
+          {
+            "group": "Build System APIs",
+            "pages": [
+              "api/ndk-build-reference",
+              "api/cmake-reference"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Community",
+            "pages": [
+              "resources/contributing",
+              "resources/support",
+              "resources/roadmap"
+            ]
+          },
+          {
+            "group": "Release Information",
+            "pages": [
+              "resources/releases",
+              "resources/changelog",
+              "resources/migration-guides"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Native C/C++ development for Android",
+    "JNI shared library compilation",
+    "Cross-platform build systems (ndk-build, CMake)",
+    "LLVM/Clang toolchain",
+    "Multi-ABI support (ARM, x86, RISC-V)",
+    "Bionic C library integration",
+    "High-performance audio and graphics APIs",
+    "Neural Networks API support",
+    "Debugging and profiling tools"
+  ],
+  "publicApiSurface": [
+    "ndk-build",
+    "CMake toolchain file",
+    "Android-specific C/C++ APIs",
+    "Bionic C library",
+    "Dynamic linker",
+    "JNI interface",
+    "Native Activity API",
+    "Audio APIs (AAudio, OpenSL ES)",
+    "Graphics APIs (Vulkan, OpenGL ES)",
+    "Neural Networks API",
+    "ABI support: armeabi-v7a, arm64-v8a, x86, x86_64, riscv64"
+  ]
+}
