@@ -1,0 +1,439 @@
+---
+title: 'CMake reference'
+description: 'Complete reference for CMake Android toolchain variables and configuration'
+---
+
+CMake is the recommended build system for Android native development. The Android NDK includes a CMake toolchain file (`android.toolchain.cmake`) that configures CMake for cross-compilation.
+
+## Toolchain configuration
+
+To use the Android toolchain, specify it when invoking CMake:
+
+```bash
+cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+      -DANDROID_ABI=arm64-v8a \
+      -DANDROID_PLATFORM=android-21 \
+      ..
+```
+
+## Platform variables
+
+These variables configure the target Android platform and architecture.
+
+<ParamField path="ANDROID_ABI" type="string" required>
+  Target Application Binary Interface (ABI). Determines the instruction set and calling conventions.
+  
+  ```cmake
+  set(ANDROID_ABI "arm64-v8a")
+  ```
+</ParamField>
+
+### Supported ABI values
+
+| ABI | Description | Architecture |
+|-----|-------------|-------------|
+| `arm64-v8a` | ARMv8-A 64-bit | Modern ARM devices (recommended) |
+| `armeabi-v7a` | ARMv7-A 32-bit with NEON | Older ARM devices |
+| `x86_64` | x86 64-bit | Intel/AMD 64-bit emulators and devices |
+| `x86` | x86 32-bit | Intel/AMD 32-bit emulators |
+
+<Note>
+  For new applications, target `arm64-v8a` and `x86_64`. The `armeabi`, `mips`, and `mips64` ABIs are deprecated and removed.
+</Note>
+
+<ParamField path="ANDROID_PLATFORM" type="string" required>
+  Minimum Android API level to target. Determines available APIs and system libraries.
+  
+  ```cmake
+  set(ANDROID_PLATFORM "android-21")
+  ```
+</ParamField>
+
+<Note>
+  Android 5.0 (API 21) is the minimum supported version for 64-bit ABIs. Use API 21 or higher for modern applications.
+</Note>
+
+<ParamField path="ANDROID_NDK" type="path">
+  Path to the Android NDK. Automatically set by Android Studio, but can be specified manually.
+  
+  ```cmake
+  set(ANDROID_NDK "/path/to/android-ndk")
+  ```
+</ParamField>
+
+## C++ configuration
+
+CMake provides variables to configure the C++ standard library and language features.
+
+<ParamField path="ANDROID_STL" type="string">
+  C++ Standard Library implementation to use. Default is `c++_shared`.
+  
+  ```cmake
+  set(ANDROID_STL "c++_shared")
+  ```
+</ParamField>
+
+### STL options
+
+| Option | Description | Use case |
+|--------|-------------|----------|
+| `c++_shared` | LLVM libc++ shared library | Recommended for most apps |
+| `c++_static` | LLVM libc++ static library | Single shared library projects |
+| `none` | No C++ standard library | C-only projects |
+| `system` | System C++ runtime | Deprecated, minimal support |
+
+<Note>
+  If using `c++_static`, ensure all shared libraries in your app use the same STL to avoid violations of the One Definition Rule (ODR).
+</Note>
+
+<ParamField path="CMAKE_CXX_STANDARD" type="integer">
+  C++ language standard version. Common values: `11`, `14`, `17`, `20`.
+  
+  ```cmake
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+  ```
+</ParamField>
+
+<ParamField path="CMAKE_CXX_FLAGS" type="string">
+  Additional C++ compiler flags.
+  
+  ```cmake
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -frtti -fexceptions")
+  ```
+</ParamField>
+
+<ParamField path="CMAKE_C_FLAGS" type="string">
+  Additional C compiler flags.
+  
+  ```cmake
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
+  ```
+</ParamField>
+
+## Compilation settings
+
+<ParamField path="ANDROID_ARM_MODE" type="string">
+  ARM instruction set mode for 32-bit ARM builds: `arm` (32-bit) or `thumb` (16-bit, default).
+  
+  ```cmake
+  set(ANDROID_ARM_MODE "arm")
+  ```
+</ParamField>
+
+<ParamField path="ANDROID_ARM_NEON" type="boolean">
+  Enable ARM NEON SIMD instructions for `armeabi-v7a`. Default is `TRUE`.
+  
+  ```cmake
+  set(ANDROID_ARM_NEON TRUE)
+  ```
+</ParamField>
+
+<ParamField path="ANDROID_DISABLE_FORMAT_STRING_CHECKS" type="boolean">
+  Disable compiler format string security checks. Default is `FALSE`. Not recommended.
+  
+  ```cmake
+  set(ANDROID_DISABLE_FORMAT_STRING_CHECKS FALSE)
+  ```
+</ParamField>
+
+<ParamField path="ANDROID_CCACHE" type="path">
+  Path to ccache executable for faster rebuilds.
+  
+  ```cmake
+  set(ANDROID_CCACHE "/usr/bin/ccache")
+  ```
+</ParamField>
+
+## Linking configuration
+
+<ParamField path="CMAKE_SHARED_LINKER_FLAGS" type="string">
+  Linker flags for shared libraries.
+  
+  ```cmake
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--build-id")
+  ```
+</ParamField>
+
+<ParamField path="ANDROID_LD" type="string">
+  Linker to use: `lld` (default, recommended) or `deprecated` (old GNU linkers).
+  
+  ```cmake
+  set(ANDROID_LD "lld")
+  ```
+</ParamField>
+
+<Note>
+  The LLD linker is faster and produces smaller binaries. The deprecated GNU linkers (gold, bfd) are removed in newer NDK versions.
+</Note>
+
+## Library linking
+
+Link Android system libraries using `target_link_libraries`:
+
+```cmake
+target_link_libraries(native-lib
+    # Android system libraries
+    android
+    log
+    EGL
+    GLESv2
+    OpenSLES
+)
+```
+
+### Common Android libraries
+
+| Library | Description | Use case |
+|---------|-------------|----------|
+| `log` | Android logging | Debug and diagnostic output |
+| `android` | Android native app glue | NativeActivity support |
+| `EGL` | EGL graphics | OpenGL ES context management |
+| `GLESv2` | OpenGL ES 2.0 | 2D/3D graphics rendering |
+| `GLESv3` | OpenGL ES 3.0+ | Advanced graphics features |
+| `OpenSLES` | OpenSL ES | Low-latency audio |
+| `mediandk` | Media APIs | Video/audio codec access |
+| `camera2ndk` | Camera2 NDK | Camera hardware access |
+| `vulkan` | Vulkan graphics | Modern graphics API |
+| `jnigraphics` | Bitmap access | Direct bitmap manipulation |
+| `z` | zlib compression | Data compression |
+
+## Complete CMakeLists.txt example
+
+```cmake
+cmake_minimum_required(VERSION 3.22.1)
+
+project("native-audio")
+
+# Configure C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Compiler flags
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -DDEBUG")
+
+# Add library
+add_library(native-audio SHARED
+    native-audio.cpp
+    audio-engine.cpp
+    audio-player.cpp
+)
+
+# Include directories
+target_include_directories(native-audio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Link libraries
+target_link_libraries(native-audio
+    android
+    log
+    OpenSLES
+)
+
+# Preprocessor definitions
+target_compile_definitions(native-audio PRIVATE
+    VERSION="1.0.0"
+    $<$<CONFIG:Debug>:ENABLE_LOGGING>
+)
+```
+
+## Build types
+
+CMake supports different build configurations:
+
+<ParamField path="CMAKE_BUILD_TYPE" type="string">
+  Build configuration: `Debug`, `Release`, `RelWithDebInfo`, or `MinSizeRel`.
+  
+  ```cmake
+  set(CMAKE_BUILD_TYPE Release)
+  ```
+</ParamField>
+
+| Build Type | Optimization | Debug Info | Use case |
+|------------|--------------|------------|----------|
+| `Debug` | None (`-O0`) | Full (`-g`) | Development and debugging |
+| `Release` | Maximum (`-O3`) | None | Production builds |
+| `RelWithDebInfo` | Optimized (`-O2`) | Full (`-g`) | Profiling and stack traces |
+| `MinSizeRel` | Size (`-Os`) | None | Size-constrained environments |
+
+## Architecture-specific code
+
+Use CMake variables to conditionally compile architecture-specific code:
+
+```cmake
+if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    target_sources(native-lib PRIVATE neon_impl.cpp)
+    target_compile_options(native-lib PRIVATE -mfpu=neon)
+elseif(ANDROID_ABI STREQUAL "arm64-v8a")
+    target_sources(native-lib PRIVATE neon64_impl.cpp)
+elseif(ANDROID_ABI MATCHES "x86.*")
+    target_sources(native-lib PRIVATE sse_impl.cpp)
+endif()
+```
+
+### Useful CMake variables
+
+| Variable | Description |
+|----------|-------------|
+| `ANDROID` | Always `TRUE` when using Android toolchain |
+| `ANDROID_ABI` | Target ABI (e.g., `arm64-v8a`) |
+| `ANDROID_PLATFORM_LEVEL` | Numeric API level (e.g., `21`) |
+| `CMAKE_ANDROID_ARCH_ABI` | Same as `ANDROID_ABI` |
+| `CMAKE_SYSTEM_NAME` | Always `Android` |
+| `CMAKE_SYSTEM_VERSION` | Android API level |
+
+## Finding and using libraries
+
+### Using find_library
+
+Find system libraries at runtime:
+
+```cmake
+find_library(log-lib log)
+find_library(android-lib android)
+
+target_link_libraries(native-lib
+    ${log-lib}
+    ${android-lib}
+)
+```
+
+### Importing prebuilt libraries
+
+```cmake
+add_library(third-party SHARED IMPORTED)
+set_target_properties(third-party PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libthirdparty.so
+)
+
+target_link_libraries(native-lib third-party)
+```
+
+### Using external projects
+
+```cmake
+include(ExternalProject)
+
+ExternalProject_Add(
+    external-lib
+    PREFIX ${CMAKE_BINARY_DIR}/external
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lib
+    CMAKE_ARGS
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DANDROID_ABI=${ANDROID_ABI}
+        -DANDROID_PLATFORM=${ANDROID_PLATFORM}
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+)
+```
+
+## Gradle integration
+
+Android Studio uses Gradle to invoke CMake. Configure CMake in `build.gradle`:
+
+```groovy
+android {
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -frtti -fexceptions"
+                abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+    
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+}
+```
+
+### Gradle CMake arguments
+
+| Argument | Description |
+|----------|-------------|
+| `cppFlags` | Additional C++ compiler flags |
+| `cFlags` | Additional C compiler flags |
+| `abiFilters` | List of ABIs to build |
+| `arguments` | Additional CMake arguments |
+| `targets` | Specific CMake targets to build |
+
+## Advanced configuration
+
+### Custom toolchain configuration
+
+```cmake
+# Set before project()
+set(CMAKE_TOOLCHAIN_FILE "${ANDROID_NDK}/build/cmake/android.toolchain.cmake")
+set(ANDROID_ABI "arm64-v8a")
+set(ANDROID_PLATFORM "android-21")
+set(ANDROID_STL "c++_shared")
+
+project("myproject")
+
+# Custom compiler flags
+add_compile_options(
+    -Wall
+    -Wextra
+    -Werror
+    $<$<CONFIG:RELEASE>:-O3>
+    $<$<CONFIG:DEBUG>:-O0 -g>
+)
+```
+
+### Strip symbols in release builds
+
+```cmake
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_custom_command(TARGET native-lib POST_BUILD
+        COMMAND ${CMAKE_STRIP} --strip-unneeded $<TARGET_FILE:native-lib>
+        COMMENT "Stripping symbols from release build"
+    )
+endif()
+```
+
+### Multiple ABI builds
+
+```cmake
+# In CMakeLists.txt, detect ABI and configure accordingly
+message(STATUS "Building for ABI: ${ANDROID_ABI}")
+
+if(ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "armeabi-v7a")
+    message(STATUS "Enabling ARM-specific optimizations")
+    target_compile_definitions(native-lib PRIVATE ARM_OPTIMIZATIONS=1)
+endif()
+```
+
+<Note>
+  For production apps, build for at least `arm64-v8a` and `armeabi-v7a` to support both modern and older devices. The Play Store requires 64-bit support.
+</Note>
+
+## Debugging CMake configuration
+
+Enable verbose CMake output:
+
+```bash
+# Command line
+cmake -DCMAKE_VERBOSE_MAKEFILE=ON ..
+
+# Or in CMakeLists.txt
+set(CMAKE_VERBOSE_MAKEFILE ON)
+```
+
+Print configuration variables:
+
+```cmake
+message(STATUS "Android ABI: ${ANDROID_ABI}")
+message(STATUS "Android Platform: ${ANDROID_PLATFORM}")
+message(STATUS "Android STL: ${ANDROID_STL}")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "C++ Flags: ${CMAKE_CXX_FLAGS}")
+```

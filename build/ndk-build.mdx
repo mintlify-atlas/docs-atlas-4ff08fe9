@@ -1,0 +1,429 @@
+---
+title: "Using ndk-build"
+description: "Build native code with ndk-build, Android.mk, and Application.mk files"
+---
+
+The ndk-build system is a collection of GNU Make scripts that simplify building native code for Android. It uses Android.mk files to define modules and Application.mk for project-wide settings.
+
+## Getting started
+
+### Project structure
+
+A typical ndk-build project structure:
+
+```
+app/
+└── src/
+    └── main/
+        ├── java/          # Java/Kotlin code
+        ├── jni/           # Native code and build files
+        │   ├── Android.mk
+        │   ├── Application.mk
+        │   └── native-lib.cpp
+        └── AndroidManifest.xml
+```
+
+<Note>
+  The `jni/` directory is the default location for ndk-build files, but you can customize this in your Gradle configuration.
+</Note>
+
+### Basic setup
+
+<Steps>
+  <Step title="Create the jni directory">
+    Create a `jni/` directory in your module's `src/main/` folder:
+    ```bash
+    mkdir -p app/src/main/jni
+    ```
+  </Step>
+  <Step title="Create Android.mk">
+    Define your native modules in `Android.mk`:
+    ```makefile Android.mk
+    LOCAL_PATH := $(call my-dir)
+
+    include $(CLEAR_VARS)
+    LOCAL_MODULE := native-lib
+    LOCAL_SRC_FILES := native-lib.cpp
+    include $(BUILD_SHARED_LIBRARY)
+    ```
+  </Step>
+  <Step title="Create Application.mk (optional)">
+    Configure project-wide settings:
+    ```makefile Application.mk
+    APP_ABI := arm64-v8a armeabi-v7a x86 x86_64
+    APP_PLATFORM := android-21
+    APP_STL := c++_shared
+    ```
+  </Step>
+  <Step title="Configure Gradle">
+    Link ndk-build in your `build.gradle`:
+    ```gradle build.gradle
+    android {
+        externalNativeBuild {
+            ndkBuild {
+                path file('src/main/jni/Android.mk')
+            }
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Android.mk file
+
+The Android.mk file defines one or more native modules using GNU Make syntax.
+
+### Required variables
+
+Every Android.mk must set these variables:
+
+```makefile Android.mk
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+# Module name (without lib prefix or .so suffix)
+LOCAL_MODULE := mymodule
+
+# Source files
+LOCAL_SRC_FILES := file1.cpp file2.cpp
+
+# Module type
+include $(BUILD_SHARED_LIBRARY)  # or BUILD_STATIC_LIBRARY
+```
+
+<Warning>
+  Always use `$(call my-dir)` to set `LOCAL_PATH` at the beginning of your Android.mk. This ensures paths are correct regardless of where ndk-build is invoked.
+</Warning>
+
+### Common variables
+
+<Tabs>
+  <Tab title="Source files">
+    ```makefile
+    # List source files explicitly
+    LOCAL_SRC_FILES := main.cpp utils.cpp
+
+    # Use wildcards (not recommended for large projects)
+    LOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)
+
+    # Prebuilt libraries
+    LOCAL_SRC_FILES := libs/$(TARGET_ARCH_ABI)/libprebuilt.so
+    ```
+  </Tab>
+  <Tab title="Include paths">
+    ```makefile
+    # Add include directories
+    LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+    LOCAL_C_INCLUDES += $(LOCAL_PATH)/../external/headers
+
+    # Export includes to dependent modules
+    LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/include
+    ```
+  </Tab>
+  <Tab title="Compiler flags">
+    ```makefile
+    # C++ flags
+    LOCAL_CPPFLAGS := -std=c++17 -Wall -Wextra
+
+    # C flags
+    LOCAL_CFLAGS := -O2 -DNDEBUG
+
+    # Preprocessor defines
+    LOCAL_CPPFLAGS += -DMY_DEFINE=1
+    ```
+  </Tab>
+  <Tab title="Dependencies">
+    ```makefile
+    # Link with shared libraries
+    LOCAL_SHARED_LIBRARIES := libdep1 libdep2
+
+    # Link with static libraries
+    LOCAL_STATIC_LIBRARIES := libstatic
+
+    # Link with system libraries
+    LOCAL_LDLIBS := -llog -landroid
+    ```
+  </Tab>
+</Tabs>
+
+### Module types
+
+<CodeGroup>
+```makefile Shared library
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := myshared
+LOCAL_SRC_FILES := shared.cpp
+include $(BUILD_SHARED_LIBRARY)
+```
+
+```makefile Static library
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := mystatic
+LOCAL_SRC_FILES := static.cpp
+include $(BUILD_STATIC_LIBRARY)
+```
+
+```makefile Prebuilt library
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := prebuilt
+LOCAL_SRC_FILES := libs/$(TARGET_ARCH_ABI)/libprebuilt.so
+include $(PREBUILT_SHARED_LIBRARY)
+```
+</CodeGroup>
+
+### Multiple modules
+
+Define multiple modules in a single Android.mk:
+
+```makefile Android.mk
+LOCAL_PATH := $(call my-dir)
+
+# First module: static library
+include $(CLEAR_VARS)
+LOCAL_MODULE := myutils
+LOCAL_SRC_FILES := utils.cpp
+LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/include
+include $(BUILD_STATIC_LIBRARY)
+
+# Second module: shared library that depends on first
+include $(CLEAR_VARS)
+LOCAL_MODULE := myapp
+LOCAL_SRC_FILES := main.cpp
+LOCAL_STATIC_LIBRARIES := myutils
+LOCAL_LDLIBS := -llog
+include $(BUILD_SHARED_LIBRARY)
+```
+
+## Application.mk file
+
+The Application.mk file configures project-wide build settings.
+
+### Common settings
+
+```makefile Application.mk
+# Target ABIs (builds for all if not specified)
+APP_ABI := arm64-v8a armeabi-v7a
+
+# Minimum API level
+APP_PLATFORM := android-21
+
+# C++ standard library
+APP_STL := c++_shared
+
+# Build mode (release or debug)
+APP_OPTIM := release
+
+# C++ features
+APP_CPPFLAGS := -std=c++17 -frtti -fexceptions
+```
+
+### STL selection
+
+<Tabs>
+  <Tab title="c++_shared">
+    ```makefile
+    APP_STL := c++_shared
+    ```
+    
+    **Recommended.** Modern C++ standard library as a shared library.
+    
+    - Full C++ standard library support
+    - Smaller per-module size (shared across modules)
+    - Requires bundling libc++_shared.so with your app
+  </Tab>
+  <Tab title="c++_static">
+    ```makefile
+    APP_STL := c++_static
+    ```
+    
+    Statically links the C++ standard library.
+    
+    - No runtime dependency
+    - Larger binary size
+    - Use only if you have a single native library
+  </Tab>
+  <Tab title="none">
+    ```makefile
+    APP_STL := none
+    ```
+    
+    No C++ standard library support.
+    
+    - Minimal size
+    - Only for C code or very limited C++
+  </Tab>
+</Tabs>
+
+<Warning>
+  If you use `APP_STL := c++_shared`, ensure the libc++_shared.so library is packaged with your APK. The Gradle plugin handles this automatically.
+</Warning>
+
+### ABI configuration
+
+```makefile Application.mk
+# Build for specific ABIs
+APP_ABI := arm64-v8a armeabi-v7a
+
+# Build for all supported ABIs (not recommended)
+APP_ABI := all
+
+# Build for 64-bit only
+APP_ABI := arm64-v8a x86_64
+```
+
+<Note>
+  Google Play requires 64-bit support for all apps with native code. Always include arm64-v8a and x86_64.
+</Note>
+
+## NDK variables
+
+ndk-build provides many built-in variables:
+
+### Path variables
+
+```makefile
+# Current directory of Android.mk
+$(LOCAL_PATH)
+
+# NDK root directory
+$(NDK_ROOT)
+
+# Target architecture (arm, arm64, x86, x86_64)
+$(TARGET_ARCH)
+
+# Target ABI (armeabi-v7a, arm64-v8a, etc.)
+$(TARGET_ARCH_ABI)
+
+# Target platform (android-21, etc.)
+$(TARGET_PLATFORM)
+```
+
+### Utility functions
+
+```makefile
+# Get current directory
+$(call my-dir)
+
+# Import module from NDK_MODULE_PATH
+$(call import-module,android/native_app_glue)
+
+# Import all modules from directory
+$(call import-add-path,$(LOCAL_PATH)/../external)
+```
+
+## Advanced usage
+
+### Conditional compilation
+
+```makefile Android.mk
+ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
+    LOCAL_SRC_FILES += arm64_optimized.cpp
+    LOCAL_CPPFLAGS += -DUSE_ARM64_OPTIMIZATIONS
+else
+    LOCAL_SRC_FILES += generic.cpp
+endif
+```
+
+### Debug vs release builds
+
+```makefile Android.mk
+ifeq ($(APP_OPTIM),debug)
+    LOCAL_CPPFLAGS += -DDEBUG -g -O0
+else
+    LOCAL_CPPFLAGS += -DNDEBUG -O3
+endif
+```
+
+### Using NDK modules
+
+Import prebuilt NDK modules like native_app_glue:
+
+```makefile Android.mk
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := mygame
+LOCAL_SRC_FILES := game.cpp
+LOCAL_STATIC_LIBRARIES := android_native_app_glue
+LOCAL_LDLIBS := -landroid -llog
+include $(BUILD_SHARED_LIBRARY)
+
+$(call import-module,android/native_app_glue)
+```
+
+## Building from command line
+
+You can build directly with ndk-build (without Gradle):
+
+```bash
+# Build all modules
+ndk-build
+
+# Build with parallel jobs
+ndk-build -j8
+
+# Clean build
+ndk-build clean
+
+# Verbose output
+ndk-build V=1
+
+# Build specific ABI
+ndk-build APP_ABI=arm64-v8a
+```
+
+<Note>
+  When using Gradle integration, you typically don't need to run ndk-build directly. Gradle invokes it automatically during the build process.
+</Note>
+
+## Common issues
+
+### Undefined references
+
+```
+undefined reference to 'someFunction'
+```
+
+**Solutions:**
+- Ensure all required source files are in `LOCAL_SRC_FILES`
+- Add dependencies to `LOCAL_SHARED_LIBRARIES` or `LOCAL_STATIC_LIBRARIES`
+- Check that library order is correct (dependencies listed after libraries that use them)
+
+### Wrong STL
+
+```
+error: undefined reference to '__cxa_guard_acquire'
+```
+
+**Solution:** Set `APP_STL := c++_shared` in Application.mk
+
+### ABI mismatch
+
+```
+UnsatisfiedLinkError: couldn't find "libnative.so"
+```
+
+**Solution:** Ensure you're building for the correct ABIs in Application.mk or build.gradle
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Gradle integration" icon="link" href="/build/gradle-integration">
+    Configure ndk-build in your Gradle build
+  </Card>
+  <Card title="CMake" icon="cube" href="/build/cmake">
+    Consider migrating to CMake for cross-platform projects
+  </Card>
+  <Card title="ABIs" icon="microchip" href="/concepts/abis">
+    Learn about Android binary interfaces
+  </Card>
+  <Card title="Debugging" icon="bug" href="/guides/debugging">
+    Debug your native code
+  </Card>
+</CardGroup>

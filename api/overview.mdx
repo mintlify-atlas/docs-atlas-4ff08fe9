@@ -1,0 +1,190 @@
+---
+title: 'Native APIs overview'
+description: 'Overview of Android NDK native APIs, API levels, and stability guarantees'
+---
+
+## What are NDK native APIs?
+
+The Android NDK provides a set of native APIs that allow you to write performance-critical portions of your Android apps in C and C++. These APIs include both standard C/C++ libraries and Android-specific functionality.
+
+### Available API categories
+
+The NDK includes the following types of native APIs:
+
+<CardGroup cols={2}>
+  <Card title="Standard C/C++ libraries" icon="book">
+    POSIX-compatible APIs provided by Bionic, Android's C library
+  </Card>
+  
+  <Card title="Android-specific APIs" icon="android">
+    Native activity, asset management, logging, and more
+  </Card>
+  
+  <Card title="Graphics and media" icon="image">
+    OpenGL ES, Vulkan, Media NDK, Camera2 NDK
+  </Card>
+  
+  <Card title="Neural Networks" icon="brain">
+    NNAPI for hardware-accelerated machine learning
+  </Card>
+</CardGroup>
+
+## API levels and compatibility
+
+NDK APIs are tied to Android API levels. Each API level corresponds to an Android platform release and determines which APIs are available.
+
+### Understanding API levels
+
+<ParamField path="minSdkVersion" type="integer" required>
+  The minimum API level your app supports. Determines which APIs you can safely use.
+</ParamField>
+
+<ParamField path="targetSdkVersion" type="integer" required>
+  The API level your app is designed for. Affects behavior changes and optimizations.
+</ParamField>
+
+<ParamField path="compileSdkVersion" type="integer" required>
+  The API level used to compile your app. Should be the latest available version.
+</ParamField>
+
+### API availability by Android version
+
+| Android Version | API Level | Notable Native APIs |
+|----------------|-----------|--------------------|
+| Android 15 | 35 | Latest Vulkan extensions, Camera improvements |
+| Android 14 | 34 | Enhanced NNAPI, Media codecs |
+| Android 13 | 33 | Vulkan 1.3, Java interop improvements |
+| Android 12 | 31-32 | Game Activity, Performance Hint API |
+| Android 11 | 30 | Native File Descriptor API, ImageDecoder |
+| Android 10 | 29 | Neural Networks API 1.2, Vulkan 1.1 |
+| Android 9 | 28 | Neural Networks API, ImageDecoder |
+| Android 8.1 | 27 | Shared memory API, Hardware buffers |
+| Android 8.0 | 26 | AAudio, Choreographer, Vulkan 1.0 |
+
+## Stability guarantees
+
+The NDK provides different stability guarantees for different types of APIs:
+
+### Stable APIs
+
+<ResponseField name="Stable APIs" type="Guaranteed">
+  These APIs are guaranteed to be available and maintain backward compatibility across Android versions. Safe to use in production apps.
+</ResponseField>
+
+Stable APIs include:
+- Standard C library (libc)
+- Math library (libm)
+- C++ standard library (libc++)
+- OpenGL ES
+- Android-specific libraries (libandroid, liblog, etc.)
+
+### Preview and experimental APIs
+
+<Warning>
+  Preview and experimental APIs may change or be removed in future releases. Use them cautiously and be prepared to update your code.
+</Warning>
+
+<Accordion title="When to use experimental APIs">
+  Experimental APIs are useful for:
+  - Testing new features before they become stable
+  - Providing feedback to the Android team
+  - Prototyping and proof-of-concept work
+  
+  **Do not** rely on experimental APIs in production apps without a fallback plan.
+</Accordion>
+
+## Finding API documentation
+
+Official NDK API documentation is available at:
+
+<Card title="NDK API Reference" icon="book" href="https://developer.android.com/ndk/reference">
+  Complete reference for all Android-specific native APIs
+</Card>
+
+### Code example: Checking API level at runtime
+
+```c
+#include <android/api-level.h>
+#include <android/log.h>
+
+#define LOG_TAG "NDK_Example"
+
+void check_api_level() {
+    int api_level = android_get_device_api_level();
+    
+    if (api_level >= 29) {
+        __android_log_print(ANDROID_LOG_INFO, LOG_TAG, 
+            "Running on Android 10 or higher (API %d)", api_level);
+        // Use Android 10+ specific APIs
+    } else if (api_level >= 26) {
+        __android_log_print(ANDROID_LOG_INFO, LOG_TAG, 
+            "Running on Android 8.0+ (API %d)", api_level);
+        // Use Android 8.0+ specific APIs
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, LOG_TAG, 
+            "Running on older Android (API %d)", api_level);
+        // Fallback implementation
+    }
+}
+```
+
+### Code example: Conditional compilation
+
+```c
+#include <android/api-level.h>
+
+// Use compile-time API level checking
+#if __ANDROID_API__ >= 29
+    // Code for Android 10+
+    #include <android/imagedecoder.h>
+    
+    void use_image_decoder() {
+        // Use ImageDecoder APIs
+    }
+#else
+    // Fallback for older versions
+    void use_image_decoder() {
+        // Use alternative image loading
+    }
+#endif
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Always check API level before using version-specific APIs">
+    Use `android_get_device_api_level()` at runtime or `__ANDROID_API__` at compile time to ensure APIs are available before calling them.
+  </Accordion>
+  
+  <Accordion title="Target the latest API level when possible">
+    Newer API levels provide better performance, security, and features. Update your `targetSdkVersion` regularly.
+  </Accordion>
+  
+  <Accordion title="Provide fallbacks for older Android versions">
+    If you need to support older devices, implement alternative code paths for missing APIs.
+  </Accordion>
+  
+  <Accordion title="Use NDK's built-in feature detection">
+    Many NDK libraries provide their own feature detection mechanisms. Use them instead of manual API level checks when available.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Android-specific APIs" icon="android" href="/api/android-specific">
+    Learn about NativeActivity, Asset Manager, logging, and other Android-specific APIs
+  </Card>
+  
+  <Card title="Bionic status" icon="server" href="/api/bionic-status">
+    Check POSIX compliance and available functions by API level
+  </Card>
+  
+  <Card title="Platform APIs" icon="layer-group" href="/api/platform-apis">
+    Understand platform API availability and compatibility
+  </Card>
+  
+  <Card title="NDK Guides" icon="book-open" href="https://developer.android.com/ndk/guides">
+    Official NDK development guides
+  </Card>
+</CardGroup>

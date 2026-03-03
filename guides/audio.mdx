@@ -1,0 +1,222 @@
+---
+title: "High-performance audio"
+description: "Build low-latency audio applications with AAudio and OpenSL ES"
+---
+
+The Android NDK provides high-performance audio APIs for applications that require low-latency audio processing, such as music apps, games, and real-time communication tools.
+
+## Audio APIs overview
+
+Android offers two primary native audio APIs:
+
+- **AAudio** - Modern C API introduced in Android 8.0 (API level 26), designed for high-performance audio with minimal latency
+- **OpenSL ES** - Industry-standard API available since Android 2.3 (API level 9), provides broader device compatibility
+
+<Tip>
+For new applications targeting Android 8.0 and higher, use AAudio. It offers better performance and simpler API design.
+</Tip>
+
+## Getting started with AAudio
+
+AAudio provides a simple, callback-based approach to audio processing with automatic latency management.
+
+### Basic audio playback
+
+<Steps>
+<Step title="Include the AAudio header">
+
+```c
+#include <aaudio/AAudio.h>
+```
+
+</Step>
+
+<Step title="Create an audio stream">
+
+```c
+AAudioStreamBuilder *builder;
+AAudioStream *stream;
+
+// Create stream builder
+aaudio_result_t result = AAudio_createStreamBuilder(&builder);
+
+// Configure the stream
+AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
+AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_EXCLUSIVE);
+AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
+AAudioStreamBuilder_setChannelCount(builder, 2);
+AAudioStreamBuilder_setSampleRate(builder, 48000);
+
+// Set the callback for audio processing
+AAudioStreamBuilder_setDataCallback(builder, audioCallback, userData);
+
+// Open the stream
+result = AAudioStreamBuilder_openStream(builder, &stream);
+AAudioStreamBuilder_delete(builder);
+```
+
+</Step>
+
+<Step title="Implement the audio callback">
+
+```c
+aaudio_data_callback_result_t audioCallback(
+    AAudioStream *stream,
+    void *userData,
+    void *audioData,
+    int32_t numFrames) {
+    
+    float *outputBuffer = (float *) audioData;
+    
+    // Fill the output buffer with audio data
+    for (int i = 0; i < numFrames * 2; i++) {
+        outputBuffer[i] = generateSample(); // Your audio generation logic
+    }
+    
+    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+}
+```
+
+</Step>
+
+<Step title="Start and stop the stream">
+
+```c
+// Start playback
+AAudioStream_requestStart(stream);
+
+// Stop playback when done
+AAudioStream_requestStop(stream);
+AAudioStream_close(stream);
+```
+
+</Step>
+</Steps>
+
+## Achieving low latency
+
+To minimize audio latency, follow these best practices:
+
+### Use exclusive mode
+
+```c
+AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_EXCLUSIVE);
+```
+
+Exclusive mode gives your app direct access to the audio hardware, reducing latency at the cost of preventing other apps from playing audio simultaneously.
+
+### Set performance mode
+
+```c
+AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+```
+
+<Note>
+Low-latency mode may increase power consumption. Use `AAUDIO_PERFORMANCE_MODE_POWER_SAVING` for background audio or when latency is not critical.
+</Note>
+
+### Query actual latency
+
+```c
+int32_t framesPerBurst = AAudioStream_getFramesPerBurst(stream);
+int32_t sampleRate = AAudioStream_getSampleRate(stream);
+float latencyMillis = (framesPerBurst * 1000.0f) / sampleRate;
+```
+
+### Optimize callback processing
+
+The audio callback runs on a high-priority thread. Follow these guidelines:
+
+- Keep processing minimal and deterministic
+- Avoid system calls, memory allocation, or locks
+- Don't perform file I/O or network operations
+- Pre-allocate all buffers before starting the stream
+- Use lock-free data structures for sharing data with other threads
+
+<Warning>
+Blocking or taking too long in the audio callback will cause audio glitches (xruns).
+</Warning>
+
+## OpenSL ES for legacy devices
+
+For apps targeting devices running Android 7.1 (API level 25) or lower, use OpenSL ES.
+
+### Basic setup
+
+```c
+#include <SLES/OpenSLES.h>
+#include <SLES/OpenSLES_Android.h>
+
+// Create engine
+SLObjectItf engineObject;
+slCreateEngine(&engineObject, 0, NULL, 0, NULL, NULL);
+(*engineObject)->Realize(engineObject, SL_BOOLEAN_FALSE);
+
+SLEngineItf engineEngine;
+(*engineObject)->GetInterface(engineObject, SL_IID_ENGINE, &engineEngine);
+
+// Create output mix
+SLObjectItf outputMixObject;
+(*engineEngine)->CreateOutputMix(engineEngine, &outputMixObject, 0, NULL, NULL);
+(*outputMixObject)->Realize(outputMixObject, SL_BOOLEAN_FALSE);
+
+// Create audio player
+SLDataLocator_AndroidSimpleBufferQueue loc_bufq = {
+    SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2
+};
+SLDataFormat_PCM format_pcm = {
+    SL_DATAFORMAT_PCM, 2, SL_SAMPLINGRATE_48,
+    SL_PCMSAMPLEFORMAT_FIXED_16, SL_PCMSAMPLEFORMAT_FIXED_16,
+    SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT,
+    SL_BYTEORDER_LITTLEENDIAN
+};
+
+SLDataSource audioSrc = {&loc_bufq, &format_pcm};
+SLDataLocator_OutputMix loc_outmix = {SL_DATALOCATOR_OUTPUTMIX, outputMixObject};
+SLDataSink audioSnk = {&loc_outmix, NULL};
+```
+
+## Audio recording
+
+To record audio with AAudio:
+
+```c
+AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_INPUT);
+AAudioStreamBuilder_setInputPreset(builder, AAUDIO_INPUT_PRESET_VOICE_COMMUNICATION);
+
+// Set callback to receive recorded audio
+AAudioStreamBuilder_setDataCallback(builder, recordCallback, userData);
+
+aaudio_data_callback_result_t recordCallback(
+    AAudioStream *stream,
+    void *userData,
+    void *audioData,
+    int32_t numFrames) {
+    
+    float *inputBuffer = (float *) audioData;
+    
+    // Process or save the recorded audio
+    processRecordedAudio(inputBuffer, numFrames);
+    
+    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+}
+```
+
+<Note>
+Don't forget to request the `RECORD_AUDIO` permission in your app's manifest and at runtime for Android 6.0 (API level 23) and higher.
+</Note>
+
+## Best practices
+
+- **Test on real devices** - Audio latency varies significantly across devices. Always test on target hardware.
+- **Handle audio focus** - Implement audio focus handling at the Java/Kotlin layer to respond appropriately when other apps need audio.
+- **Monitor performance** - Use `AAudioStream_getXRunCount()` to detect buffer underruns and overruns.
+- **Provide fallback** - Not all devices support low-latency audio. Gracefully degrade to shared mode if exclusive mode fails.
+- **Use appropriate buffer sizes** - Smaller buffers reduce latency but increase CPU usage and risk of glitches.
+
+## Additional resources
+
+- [AAudio API Reference](https://developer.android.com/ndk/reference/group/audio) - Official NDK documentation
+- [High-Performance Audio Guide](https://developer.android.com/ndk/guides/audio) - Detailed Android developer guide
+- [Audio Latency](https://source.android.com/devices/audio/latency) - Understanding Android audio architecture

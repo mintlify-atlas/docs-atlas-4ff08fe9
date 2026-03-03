@@ -1,0 +1,120 @@
+---
+title: Introduction to Android NDK
+description: Learn about the Android Native Development Kit and how it enables native code development for Android applications
+---
+
+# Introduction to Android NDK
+
+The Android Native Development Kit (NDK) allows you to include native code in your Android application packages, compiled as JNI shared libraries. This enables you to leverage C and C++ code for performance-critical portions of your app.
+
+## What is the Android NDK?
+
+The NDK is a toolset that allows you to implement parts of your Android app using native-code languages such as C and C++. For certain types of apps, this can help you reuse code libraries written in those languages.
+
+Native code is compiled into JNI (Java Native Interface) shared libraries that are packaged with your Android application. Your Java or Kotlin code can then call functions in your native libraries through the JNI framework.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="High performance" icon="gauge-high">
+    Execute computationally intensive operations with native code for maximum performance
+  </Card>
+  
+  <Card title="Code reuse" icon="recycle">
+    Leverage existing C/C++ libraries and codebases across platforms
+  </Card>
+  
+  <Card title="Low-level access" icon="microchip">
+    Access Android and device hardware features at a lower level
+  </Card>
+  
+  <Card title="Multiple build systems" icon="hammer">
+    Support for ndk-build and CMake build systems out of the box
+  </Card>
+</CardGroup>
+
+## Use cases
+
+The NDK is particularly useful for:
+
+### Performance-critical applications
+
+Native code can provide significant performance improvements for:
+- **High-performance audio** - Real-time audio processing with low latency
+- **Graphics rendering** - Vulkan-based graphics and game engines
+- **Neural networks** - Machine learning inference with optimized computation
+- **Signal processing** - Image, video, and audio processing algorithms
+
+### Cross-platform development
+
+Reuse existing C/C++ libraries across multiple platforms:
+- Port desktop applications to Android
+- Share business logic between iOS and Android
+- Integrate third-party native libraries
+
+<Note>
+  Most apps do not need the NDK. If you're writing a typical Android app with standard UI and business logic, you should use Java or Kotlin exclusively.
+</Note>
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the NDK through Android Studio or as a standalone download
+  </Card>
+  
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Build your first native Android application in minutes
+  </Card>
+  
+  <Card title="Build systems" icon="wrench" href="/build/overview">
+    Learn about ndk-build and CMake build configurations
+  </Card>
+  
+  <Card title="API reference" icon="book" href="/api/overview">
+    Explore the complete NDK API documentation
+  </Card>
+</CardGroup>
+
+## Build system support
+
+Android Studio supports both ndk-build and CMake build systems out of the box:
+
+- **ndk-build** - The NDK's traditional build system using Android.mk files
+- **CMake** - Industry-standard build system with CMakeLists.txt configuration
+
+You can choose the build system that best fits your workflow and existing codebase.
+
+<Warning>
+  The NDK cannot be built on Windows; only Linux and macOS hosts are supported for building the NDK itself. However, you can use the NDK on Windows for app development.
+</Warning>
+
+## Key resources
+
+### Documentation
+
+- [NDK Guides](https://developer.android.com/ndk/guides/) - Comprehensive guides for building and debugging
+- [NDK API Reference](https://developer.android.com/ndk/reference) - Complete API documentation for Android-specific native APIs
+- [NDK Roadmap](https://android.googlesource.com/platform/ndk/+/master/docs/Roadmap.md) - Future development plans
+
+### Community and support
+
+- [Android NDK Google Group](http://groups.google.com/group/android-ndk) - Community discussions
+- [GitHub Issues](https://github.com/android-ndk/ndk/issues) - Bug reports and feature requests
+- [Release Calendar](https://github.com/android-ndk/ndk/wiki) - Upcoming releases and downloads
+
+## Understanding the C library (bionic)
+
+Android uses its own C library called "bionic". Important resources:
+
+- **API availability** - Different APIs are available in different Android API levels
+- **Dynamic linker changes** - Critical information if you encounter issues loading .so files
+- **ABI considerations** - Special considerations for 32-bit vs 64-bit code
+
+<Note>
+  Always check the [Android bionic status](https://android.googlesource.com/platform/bionic/+/master/docs/status.md) to understand which APIs are available in your target Android versions.
+</Note>
+
+## Next steps
+
+Ready to start building native Android applications? Follow our [installation guide](/installation) to set up your development environment, then work through the [quick start tutorial](/quickstart) to create your first native app.

@@ -1,0 +1,484 @@
+---
+title: 'Platform APIs'
+description: 'Platform API availability, private vs public APIs, and compatibility considerations'
+---
+
+## Understanding platform APIs
+
+Android distinguishes between public NDK APIs (stable and supported) and private platform APIs (internal implementation details that may change).
+
+<Warning>
+  Using private platform APIs can cause your app to break on future Android versions. Only use public NDK APIs in production apps.
+</Warning>
+
+## Public vs private APIs
+
+### Public NDK APIs
+
+<ResponseField name="Public APIs" type="Stable">
+  These APIs are officially supported, documented, and guaranteed to remain compatible across Android versions.
+</ResponseField>
+
+Characteristics of public APIs:
+- Documented in the [NDK API Reference](https://developer.android.com/ndk/reference)
+- Headers included in the NDK
+- Linked against public libraries (`libandroid.so`, `liblog.so`, etc.)
+- Stability guarantees across Android versions
+
+### Private platform APIs
+
+<ResponseField name="Private APIs" type="Unstable">
+  Internal Android platform APIs that are not part of the NDK. No compatibility guarantees.
+</ResponseField>
+
+<Warning>
+  Starting with Android 7.0 (API 24), the platform actively restricts access to private APIs. Restrictions have been strengthened in each release.
+</Warning>
+
+Characteristics of private APIs:
+- Not documented for NDK developers
+- May change or be removed without notice
+- May be blocked or restricted at runtime
+- Can cause app crashes or rejections from Google Play
+
+## Private API restrictions timeline
+
+### Android 7.0 (API 24) - Initial restrictions
+
+Introduced restrictions on accessing private platform symbols:
+
+```c
+// This will fail on Android 7.0+
+void* handle = dlopen("libandroid_runtime.so", RTLD_NOW);
+// Returns NULL - private library not accessible
+```
+
+### Android 9.0 (API 28) - Strict enforcement
+
+<Warning>
+  Android 9.0 introduced strict enforcement of private API restrictions for all apps targeting API 28+.
+</Warning>
+
+Restriction categories:
+
+| List | Description | Behavior |
+|------|-------------|----------|
+| Whitelist | Public APIs | Always accessible |
+| Light grey | Private APIs | Accessible with warning |
+| Dark grey | Private APIs | Accessible only if `targetSdkVersion` < 28 |
+| Blacklist | Private APIs | Never accessible |
+
+### Android 10+ (API 29+) - Progressive restrictions
+
+Each Android version moves more APIs from grey lists to blacklist:
+
+```c
+// Example: Attempting to access private API
+void* symbol = dlsym(RTLD_DEFAULT, "_ZN7android14SurfaceControl7getLayerEv");
+
+if (symbol == NULL) {
+    // Symbol blocked due to private API restrictions
+    __android_log_print(ANDROID_LOG_ERROR, "App", 
+        "Private API blocked: %s", dlerror());
+}
+```
+
+## Public API categories
+
+### Core Android libraries
+
+These libraries provide public APIs that you can safely link against:
+
+<ParamField path="libandroid.so" type="library">
+  Core Android APIs: NativeActivity, Asset Manager, Configuration, etc.
+</ParamField>
+
+<ParamField path="liblog.so" type="library">
+  Android logging APIs for integration with logcat.
+</ParamField>
+
+<ParamField path="libz.so" type="library">
+  Compression library (zlib).
+</ParamField>
+
+<ParamField path="libEGL.so" type="library">
+  EGL graphics initialization and management.
+</ParamField>
+
+<ParamField path="libGLESv2.so" type="library">
+  OpenGL ES 2.0 graphics API.
+</ParamField>
+
+<ParamField path="libGLESv3.so" type="library">
+  OpenGL ES 3.0+ graphics API.
+</ParamField>
+
+<ParamField path="libvulkan.so" type="library">
+  Vulkan graphics API (API 24+).
+</ParamField>
+
+### Media and audio libraries
+
+<ParamField path="libaaudio.so" type="library">
+  AAudio high-performance audio API (API 26+).
+</ParamField>
+
+<ParamField path="libOpenSLES.so" type="library">
+  OpenSL ES audio API.
+</ParamField>
+
+<ParamField path="libmediandk.so" type="library">
+  Media codec and format APIs (API 21+).
+</ParamField>
+
+<ParamField path="libcamera2ndk.so" type="library">
+  Camera2 NDK API (API 24+).
+</ParamField>
+
+### Neural Networks and ML
+
+<ParamField path="libneuralnetworks.so" type="library">
+  Neural Networks API for hardware-accelerated ML (API 27+).
+</ParamField>
+
+## Library linking examples
+
+### CMake configuration
+
+```cmake
+# Link against public Android libraries
+target_link_libraries(${CMAKE_PROJECT_NAME}
+    # Core Android
+    android
+    log
+    
+    # Graphics
+    EGL
+    GLESv3
+    
+    # Audio (API 26+)
+    aaudio
+    
+    # Media (API 21+)
+    mediandk
+    
+    # Compression
+    z
+)
+```
+
+### ndk-build configuration
+
+```makefile
+# Android.mk
+LOCAL_LDLIBS := -landroid -llog -lEGL -lGLESv3 -lz
+
+# For API level specific libraries
+ifeq ($(shell test $(APP_PLATFORM_LEVEL) -ge 26; echo $$?),0)
+    LOCAL_LDLIBS += -laaudio
+endif
+```
+
+## Detecting API availability at runtime
+
+### Code example: Runtime API detection
+
+```c
+#include <dlfcn.h>
+#include <android/log.h>
+
+#define LOG_TAG "APIDetection"
+
+typedef struct {
+    bool has_aaudio;
+    bool has_vulkan;
+    bool has_ndk_camera;
+} api_availability_t;
+
+api_availability_t detect_api_availability() {
+    api_availability_t apis = {false, false, false};
+    
+    // Check for AAudio (API 26+)
+    void* aaudio = dlopen("libaaudio.so", RTLD_NOW | RTLD_NOLOAD);
+    if (aaudio != NULL) {
+        apis.has_aaudio = true;
+        dlclose(aaudio);
+        __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "AAudio available");
+    }
+    
+    // Check for Vulkan (API 24+)
+    void* vulkan = dlopen("libvulkan.so", RTLD_NOW | RTLD_NOLOAD);
+    if (vulkan != NULL) {
+        apis.has_vulkan = true;
+        dlclose(vulkan);
+        __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "Vulkan available");
+    }
+    
+    // Check for Camera2 NDK (API 24+)
+    void* camera = dlopen("libcamera2ndk.so", RTLD_NOW | RTLD_NOLOAD);
+    if (camera != NULL) {
+        apis.has_ndk_camera = true;
+        dlclose(camera);
+        __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "Camera2 NDK available");
+    }
+    
+    return apis;
+}
+```
+
+### Code example: Weak linking for optional APIs
+
+```c
+// Weakly link against optional API (available API 26+)
+__attribute__((weak)) int AAudio_createStreamBuilder(...);
+
+void use_audio_api() {
+    if (AAudio_createStreamBuilder != NULL) {
+        // AAudio is available, use it
+        __android_log_print(ANDROID_LOG_INFO, "Audio", "Using AAudio");
+        // Call AAudio functions...
+    } else {
+        // Fall back to OpenSL ES
+        __android_log_print(ANDROID_LOG_INFO, "Audio", "Falling back to OpenSL ES");
+        // Use OpenSL ES instead...
+    }
+}
+```
+
+## API availability by category
+
+### Graphics APIs
+
+| API | Library | Minimum API | Notes |
+|-----|---------|-------------|-------|
+| OpenGL ES 2.0 | `libGLESv2.so` | 21 | Widely supported |
+| OpenGL ES 3.0 | `libGLESv3.so` | 21 | Check device support |
+| OpenGL ES 3.1 | `libGLESv3.so` | 21 | Check device support |
+| OpenGL ES 3.2 | `libGLESv3.so` | 24 | Limited device support |
+| Vulkan 1.0 | `libvulkan.so` | 24 | Check device support |
+| Vulkan 1.1 | `libvulkan.so` | 28 | Check device support |
+| EGL 1.4 | `libEGL.so` | 21 | Required for OpenGL ES |
+
+### Audio APIs
+
+| API | Library | Minimum API | Notes |
+|-----|---------|-------------|-------|
+| OpenSL ES | `libOpenSLES.so` | 21 | Legacy, but stable |
+| AAudio | `libaaudio.so` | 26 | Preferred for low latency |
+
+### Camera APIs
+
+| API | Library | Minimum API | Notes |
+|-----|---------|-------------|-------|
+| Camera2 NDK | `libcamera2ndk.so` | 24 | Modern camera API |
+
+### ML and compute
+
+| API | Library | Minimum API | Notes |
+|-----|---------|-------------|-------|
+| NNAPI | `libneuralnetworks.so` | 27 | Hardware-accelerated ML |
+
+## Avoiding private API usage
+
+### Common mistakes
+
+<Warning>
+  These patterns indicate private API usage and should be avoided.
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="Linking against private libraries">
+    **Don't do this:**
+    ```cmake
+    # DON'T: These are private libraries
+    target_link_libraries(app
+        android_runtime  # Private!
+        binder           # Private!
+        ui               # Private!
+    )
+    ```
+    
+    **Do this instead:**
+    ```cmake
+    # Use public APIs only
+    target_link_libraries(app
+        android
+        log
+        EGL
+        GLESv3
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Using internal headers">
+    **Don't do this:**
+    ```c
+    // DON'T: Internal Android headers
+    #include <ui/GraphicBuffer.h>
+    #include <binder/IBinder.h>
+    ```
+    
+    **Do this instead:**
+    ```c
+    // Use public NDK headers
+    #include <android/hardware_buffer.h>
+    #include <android/native_window.h>
+    ```
+  </Accordion>
+  
+  <Accordion title="Accessing symbols via dlopen/dlsym">
+    **Don't do this:**
+    ```c
+    // DON'T: Access private symbols
+    void* handle = dlopen("libgui.so", RTLD_NOW);
+    void* private_func = dlsym(handle, "_ZN7android11Surface4lockEPNS_11Surface13SurfaceInfoEPNS_6RegionE");
+    ```
+    
+    **Do this instead:**
+    Use public NDK APIs or JNI to call Java APIs when needed.
+  </Accordion>
+</AccordionGroup>
+
+## Migration strategies
+
+If you're currently using private APIs, here are migration strategies:
+
+### 1. Use public NDK equivalents
+
+```c
+// Before: Private SurfaceControl API
+// SurfaceControl::createSurface() // Private!
+
+// After: Public ANativeWindow API
+#include <android/native_window.h>
+
+void use_public_api(ANativeWindow* window) {
+    // Use public native window APIs
+    int32_t width = ANativeWindow_getWidth(window);
+    int32_t height = ANativeWindow_getHeight(window);
+    int32_t format = ANativeWindow_getFormat(window);
+}
+```
+
+### 2. Use JNI to call Java APIs
+
+```c
+// If no NDK equivalent exists, use JNI to call Java APIs
+#include <jni.h>
+
+void call_java_api(JNIEnv* env, jobject activity) {
+    // Get Java class
+    jclass activity_class = (*env)->GetObjectClass(env, activity);
+    
+    // Get method ID
+    jmethodID method = (*env)->GetMethodID(env, activity_class, 
+        "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+    
+    // Call Java method
+    jstring service_name = (*env)->NewStringUTF(env, "window");
+    jobject window_manager = (*env)->CallObjectMethod(env, activity, 
+        method, service_name);
+    
+    // Use the Java object...
+}
+```
+
+### 3. Request new public APIs
+
+If you need functionality that's not available in the NDK:
+
+<Card 
+  title="File NDK feature request" 
+  icon="github" 
+  href="https://github.com/android/ndk/issues"
+>
+  Request new public APIs through the NDK GitHub repository
+</Card>
+
+## Testing for private API usage
+
+### Using veridex
+
+Android provides a tool called `veridex` to detect private API usage:
+
+```bash
+# Download veridex from Android SDK
+${ANDROID_SDK}/cmdline-tools/latest/bin/sdkmanager "platforms;android-34"
+
+# Run veridex on your APK
+${ANDROID_SDK}/platforms/android-34/veridex.sh \
+    --dex-file=app.apk \
+    --imprecise
+
+# Output will show any private API usage detected
+```
+
+### Lint warnings
+
+Android Studio will show lint warnings for known private API usage:
+
+```c
+// Android Studio will warn about this
+void* private_lib = dlopen("libandroid_runtime.so", RTLD_NOW);
+// Warning: Using private Android library
+```
+
+## Official resources
+
+<CardGroup cols={2}>
+  <Card 
+    title="Android changes for NDK developers" 
+    icon="file-lines" 
+    href="https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md"
+  >
+    Dynamic linker changes and restrictions
+  </Card>
+  
+  <Card 
+    title="Private API restrictions" 
+    icon="shield" 
+    href="https://developer.android.com/guide/app-compatibility/restrictions-non-sdk-interfaces"
+  >
+    Official documentation on private API restrictions
+  </Card>
+</CardGroup>
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Only use documented NDK APIs">
+    Stick to APIs documented at developer.android.com/ndk/reference. If an API isn't documented, assume it's private.
+  </Accordion>
+  
+  <Accordion title="Test on multiple Android versions">
+    Private API restrictions vary by Android version. Test your app on API 24, 28, 29, and the latest version.
+  </Accordion>
+  
+  <Accordion title="Use weak linking for optional features">
+    When using newer APIs, use weak linking to gracefully degrade on older devices.
+  </Accordion>
+  
+  <Accordion title="Monitor Android platform changes">
+    Subscribe to Android developer announcements to stay informed about API changes and deprecations.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="NDK API overview" icon="book" href="/api/overview">
+    Learn about available NDK APIs and stability guarantees
+  </Card>
+  
+  <Card title="Dynamic linker" icon="link" href="/advanced/dynamic-linker">
+    Understanding the Android dynamic linker
+  </Card>
+  
+  <Card title="Android-specific APIs" icon="android" href="/api/android-specific">
+    Public Android-specific native APIs
+  </Card>
+  
+  <Card title="Bionic status" icon="server" href="/api/bionic-status">
+    C library API availability and POSIX compliance
+  </Card>
+</CardGroup>

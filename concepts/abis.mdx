@@ -1,0 +1,618 @@
+---
+title: Application Binary Interfaces (ABIs)
+description: Understanding Android ABIs, supported architectures, and APK configuration strategies
+---
+
+An Application Binary Interface (ABI) defines the machine code interface for your native libraries. Understanding ABIs is crucial for distributing Android applications with native code across different device architectures.
+
+## What is an ABI?
+
+An ABI specifies:
+
+- **Instruction set**: The CPU architecture (ARM, x86, RISC-V)
+- **Calling conventions**: How functions receive parameters and return values
+- **Register usage**: Which CPU registers are used for what purposes
+- **Memory layout**: Data structure sizes, alignment, and byte ordering
+- **System call interface**: How to invoke kernel functionality
+
+<Info>
+  When you compile native code, you must specify the target ABI. The resulting `.so` file will only run on devices with that ABI.
+</Info>
+
+## Supported ABIs
+
+Android NDK supports the following ABIs:
+
+<Tabs>
+  <Tab title="ARM (64-bit)">
+    ### arm64-v8a
+    
+    **Architecture**: ARMv8-A 64-bit
+    
+    **Usage**: Modern Android devices (Android 5.0+)
+    
+    **Characteristics**:
+    - 64-bit architecture with larger address space
+    - Access to more CPU registers (31 general-purpose registers)
+    - Advanced SIMD with NEON (128-bit vectors)
+    - Hardware cryptography extensions
+    - Most common ABI for recent Android devices
+    
+    **Typical devices**:
+    - Flagship phones from 2015 onwards
+    - Mid-range and budget phones from 2017 onwards
+    - All devices shipping with Android 10+
+    
+    ```cmake
+    # CMakeLists.txt
+    set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
+    ```
+    
+    <Note>
+      As of 2024, **arm64-v8a** is the dominant ABI, representing over 85% of active Android devices.
+    </Note>
+  </Tab>
+  
+  <Tab title="ARM (32-bit)">
+    ### armeabi-v7a
+    
+    **Architecture**: ARMv7-A 32-bit with Thumb-2 and NEON
+    
+    **Usage**: Older Android devices (Android 2.3+)
+    
+    **Characteristics**:
+    - 32-bit architecture (4GB address limit)
+    - NEON SIMD instructions (64-bit and 128-bit vectors)
+    - Hardware floating-point (VFPv3-D16)
+    - Thumb-2 instruction set for code density
+    
+    **Typical devices**:
+    - Phones from 2010-2017 era
+    - Some current low-end devices in emerging markets
+    - Older tablets
+    
+    ```cmake
+    # CMakeLists.txt
+    set(CMAKE_ANDROID_ARCH_ABI armeabi-v7a)
+    ```
+    
+    <Warning>
+      Google Play requires 64-bit support for all apps with native code. You must include **arm64-v8a** even if you also support **armeabi-v7a**.
+    </Warning>
+  </Tab>
+  
+  <Tab title="x86 (64-bit)">
+    ### x86_64
+    
+    **Architecture**: Intel/AMD 64-bit (x86-64, AMD64)
+    
+    **Usage**: Android emulators, Chrome OS devices, rare x86 phones
+    
+    **Characteristics**:
+    - 64-bit x86 architecture
+    - SSE, SSE2, SSE3, SSSE3, SSE4.1, SSE4.2 SIMD instructions
+    - Compatible with desktop x86_64 code (with Android-specific considerations)
+    
+    **Typical devices**:
+    - Android Studio emulator (development)
+    - Chrome OS devices (Chromebooks)
+    - ASUS Zenfone (some models)
+    
+    ```cmake
+    # CMakeLists.txt
+    set(CMAKE_ANDROID_ARCH_ABI x86_64)
+    ```
+    
+    <Info>
+      While few physical devices use x86_64, it's important for **emulator testing** during development.
+    </Info>
+  </Tab>
+  
+  <Tab title="x86 (32-bit)">
+    ### x86
+    
+    **Architecture**: Intel/AMD 32-bit (IA-32)
+    
+    **Usage**: Legacy emulators, older x86 Android devices
+    
+    **Characteristics**:
+    - 32-bit x86 architecture
+    - SSE2 and SSE3 SIMD instructions
+    - Less common than ARM variants
+    
+    **Typical devices**:
+    - Older Android emulators
+    - Intel Atom-based phones and tablets (2012-2016)
+    
+    ```cmake
+    # CMakeLists.txt
+    set(CMAKE_ANDROID_ARCH_ABI x86)
+    ```
+    
+    <Note>
+      Support for x86 32-bit is declining. Most developers only support this ABI if they have specific requirements.
+    </Note>
+  </Tab>
+  
+  <Tab title="RISC-V (64-bit)">
+    ### riscv64
+    
+    **Architecture**: RISC-V 64-bit
+    
+    **Usage**: Experimental, future Android devices
+    
+    **Characteristics**:
+    - Open-source instruction set architecture
+    - Modular design with standard extensions
+    - Added in NDK r27 (experimental)
+    - No physical devices yet (2024)
+    
+    **Status**:
+    - Experimental support in Android 14+
+    - Available in NDK r27 and later
+    - Primarily for early development and testing
+    
+    ```cmake
+    # CMakeLists.txt - Requires NDK r27+
+    set(CMAKE_ANDROID_ARCH_ABI riscv64)
+    ```
+    
+    <Warning>
+      **riscv64** is experimental. Do not rely on it for production apps. It's intended for future device support and early adopter development.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Deprecated ABIs
+
+The following ABIs are no longer supported:
+
+| ABI | Removed | Notes |
+|-----|---------|-------|
+| armeabi | NDK r17 | Generic ARMv5TE, very old devices |
+| mips | NDK r17 | MIPS 32-bit, never widely adopted |
+| mips64 | NDK r17 | MIPS 64-bit, never widely adopted |
+
+<Info>
+  If your app targets these ABIs, you must upgrade to supported ABIs or use an older NDK version (not recommended).
+</Info>
+
+## ABI compatibility
+
+### Fallback behavior
+
+Android can run 32-bit libraries on 64-bit devices:
+
+- **arm64-v8a** devices can run **armeabi-v7a** libraries
+- **x86_64** devices can run **x86** libraries
+
+<Warning>
+  If your APK contains **any** 64-bit library, Android will **only** load 64-bit libraries. Mixing ABIs within a single APK requires providing all libraries for all included ABIs.
+</Warning>
+
+```groovy
+// If you have arm64-v8a libraries, you must provide ALL libraries
+// for arm64-v8a. Android won't fall back to armeabi-v7a versions.
+android {
+    defaultConfig {
+        ndk {
+            // Ensure all libraries exist for these ABIs
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+}
+```
+
+### Library dependencies
+
+All native dependencies must match ABIs:
+
+```plaintext
+app/src/main/jniLibs/
+├── arm64-v8a/
+│   ├── libnative.so      ✓ Your library
+│   └── libdependency.so  ✓ Must include dependency
+└── armeabi-v7a/
+    ├── libnative.so      ✓ Your library
+    └── libdependency.so  ✓ Must include dependency
+```
+
+## APK configuration strategies
+
+### Fat APKs (single APK)
+
+One APK containing libraries for all ABIs:
+
+<Tabs>
+  <Tab title="Advantages">
+    - Simple distribution (one APK for all devices)
+    - No app bundle required
+    - Works with all distribution channels
+    - Easier version management
+  </Tab>
+  
+  <Tab title="Disadvantages">
+    - Larger download size (users download all ABIs)
+    - Wasted storage (unused ABIs on device)
+    - Increased APK size
+  </Tab>
+</Tabs>
+
+```groovy
+// build.gradle - Fat APK with multiple ABIs
+android {
+    defaultConfig {
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+        }
+    }
+}
+```
+
+**Typical APK size impact**:
+```plaintext
+Base APK: 5 MB
++ arm64-v8a libs: 3 MB
++ armeabi-v7a libs: 2.5 MB
++ x86_64 libs: 3.2 MB
++ x86 libs: 2.8 MB
+= Total: 16.5 MB (users download all)
+```
+
+### Split APKs (multiple APKs)
+
+Generate separate APKs per ABI:
+
+<Tabs>
+  <Tab title="Advantages">
+    - Smaller download size per device
+    - Users only get required ABI
+    - Reduced storage on device
+  </Tab>
+  
+  <Tab title="Disadvantages">
+    - More complex version management
+    - Requires Google Play (or manual distribution)
+    - More APKs to test and maintain
+  </Tab>
+</Tabs>
+
+```groovy
+// build.gradle - Split APKs
+android {
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+            universalApk true  // Also generate fat APK
+        }
+    }
+    
+    // Version codes for different ABIs
+    android.applicationVariants.all { variant ->
+        variant.outputs.each { output ->
+            def abiVersionCode = 0
+            switch (output.getFilter("ABI")) {
+                case "arm64-v8a": abiVersionCode = 1; break
+                case "armeabi-v7a": abiVersionCode = 2; break
+                case "x86_64": abiVersionCode = 3; break
+                case "x86": abiVersionCode = 4; break
+            }
+            output.versionCodeOverride = 
+                abiVersionCode * 1000000 + defaultConfig.versionCode
+        }
+    }
+}
+```
+
+### Android App Bundle (AAB) - Recommended
+
+Google Play generates optimized APKs per device:
+
+<Tabs>
+  <Tab title="Advantages">
+    - Automatic optimization by Google Play
+    - Smallest possible download size
+    - Users get only their device's ABI
+    - Simplest configuration
+    - Supports dynamic delivery
+  </Tab>
+  
+  <Tab title="Disadvantages">
+    - Requires Google Play (or compatible store)
+    - Cannot directly install AAB files
+    - Less control over final APK
+  </Tab>
+</Tabs>
+
+```groovy
+// build.gradle - App Bundle (default, no special config needed)
+android {
+    defaultConfig {
+        ndk {
+            // Include all ABIs, Play Store delivers appropriate one
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+        }
+    }
+}
+```
+
+```bash
+# Build App Bundle
+./gradlew bundleRelease
+
+# Output: app/build/outputs/bundle/release/app-release.aab
+```
+
+<Note>
+  **App Bundle is the recommended approach** for Google Play distribution. Users automatically receive the optimal APK for their device.
+</Note>
+
+## Recommended ABI configuration
+
+For most applications in 2024:
+
+<AccordionGroup>
+  <Accordion title="Standard configuration (recommended)">
+    Support the two most common ABIs:
+    
+    ```groovy
+    android {
+        defaultConfig {
+            ndk {
+                abiFilters 'arm64-v8a', 'armeabi-v7a'
+            }
+        }
+    }
+    ```
+    
+    **Coverage**: ~99% of devices
+    
+    **Rationale**:
+    - arm64-v8a: All modern devices (required by Play Store)
+    - armeabi-v7a: Older devices still in use
+    - Omit x86/x86_64: Very few physical devices, emulator can use ARM translation
+  </Accordion>
+  
+  <Accordion title="Minimal configuration (64-bit only)">
+    Only support 64-bit ARM:
+    
+    ```groovy
+    android {
+        defaultConfig {
+            ndk {
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+    ```
+    
+    **Coverage**: ~85-90% of active devices
+    
+    **Rationale**:
+    - Smallest APK size
+    - All Android 10+ devices
+    - Trade off: Excludes older/budget devices
+  </Accordion>
+  
+  <Accordion title="Comprehensive configuration">
+    Support all major ABIs:
+    
+    ```groovy
+    android {
+        defaultConfig {
+            ndk {
+                abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+            }
+        }
+    }
+    ```
+    
+    **Coverage**: Nearly 100% of devices
+    
+    **Rationale**:
+    - Maximum device compatibility
+    - Supports emulators natively
+    - Chrome OS devices
+    - Trade off: Larger APK (use App Bundle to mitigate)
+  </Accordion>
+  
+  <Accordion title="Development/testing configuration">
+    For development builds:
+    
+    ```groovy
+    android {
+        buildTypes {
+            debug {
+                ndk {
+                    // Only build for your test device/emulator
+                    abiFilters 'arm64-v8a'  // or 'x86_64' for emulator
+                }
+            }
+            release {
+                ndk {
+                    abiFilters 'arm64-v8a', 'armeabi-v7a'
+                }
+            }
+        }
+    }
+    ```
+    
+    **Rationale**:
+    - Faster build times during development
+    - Full ABI coverage for release builds
+  </Accordion>
+</AccordionGroup>
+
+## Detecting ABI at runtime
+
+You can check which ABI your app is running on:
+
+<Tabs>
+  <Tab title="Kotlin">
+    ```kotlin
+    import android.os.Build
+    
+    fun getCurrentABI(): String {
+        return Build.SUPPORTED_ABIS[0]
+    }
+    
+    fun getAllSupportedABIs(): Array<String> {
+        return Build.SUPPORTED_ABIS
+    }
+    
+    fun isArm64(): Boolean {
+        return Build.SUPPORTED_ABIS[0] == "arm64-v8a"
+    }
+    
+    // Example usage
+    val abi = getCurrentABI()
+    Log.d("ABI", "Running on: $abi")
+    // Output: "Running on: arm64-v8a"
+    ```
+  </Tab>
+  
+  <Tab title="Java">
+    ```java
+    import android.os.Build;
+    
+    public String getCurrentABI() {
+        return Build.SUPPORTED_ABIS[0];
+    }
+    
+    public String[] getAllSupportedABIs() {
+        return Build.SUPPORTED_ABIS;
+    }
+    
+    public boolean isArm64() {
+        return Build.SUPPORTED_ABIS[0].equals("arm64-v8a");
+    }
+    
+    // Example usage
+    String abi = getCurrentABI();
+    Log.d("ABI", "Running on: " + abi);
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  `Build.CPU_ABI` and `Build.CPU_ABI2` are deprecated. Use `Build.SUPPORTED_ABIS` instead.
+</Warning>
+
+## ABI-specific optimizations
+
+You can write ABI-specific code using compiler defines:
+
+```c
+#include <android/ndk-version.h>
+
+void optimized_function(float* data, int length) {
+#if defined(__aarch64__)  // arm64-v8a
+    // Use ARM NEON 64-bit optimizations
+    #include <arm_neon.h>
+    // NEON implementation...
+    
+#elif defined(__ARM_NEON__)  // armeabi-v7a with NEON
+    // Use ARM NEON 32-bit optimizations
+    #include <arm_neon.h>
+    // NEON implementation...
+    
+#elif defined(__x86_64__) || defined(__i386__)  // x86/x86_64
+    // Use SSE/AVX optimizations
+    #include <xmmintrin.h>
+    // SSE implementation...
+    
+#else
+    // Generic C implementation
+    for (int i = 0; i < length; i++) {
+        data[i] = process(data[i]);
+    }
+#endif
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Library not found errors">
+    **Error**: `UnsatisfiedLinkError: dalvik.system.PathClassLoader couldn't find "libnative.so"`
+    
+    **Causes**:
+    1. Library not built for device's ABI
+    2. Missing dependencies for that ABI
+    3. Library in wrong directory
+    
+    **Solutions**:
+    ```bash
+    # Check which ABIs are in your APK
+    unzip -l app-release.apk | grep "\.so$"
+    
+    # Should see:
+    # lib/arm64-v8a/libnative.so
+    # lib/armeabi-v7a/libnative.so
+    ```
+    
+    Verify your build.gradle includes the target ABI:
+    ```groovy
+    ndk {
+        abiFilters 'arm64-v8a', 'armeabi-v7a'
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Mixed 32/64-bit libraries">
+    **Error**: App crashes on 64-bit devices but works on 32-bit
+    
+    **Cause**: APK contains arm64-v8a libraries but missing some dependencies in arm64-v8a
+    
+    **Solution**: Ensure **all** native libraries exist for **all** included ABIs:
+    ```bash
+    # Check library consistency
+    unzip -l app.apk | grep "\.so$" | sort
+    
+    # Should have matching files for each ABI:
+    # lib/arm64-v8a/libnative.so
+    # lib/arm64-v8a/libdep.so
+    # lib/armeabi-v7a/libnative.so  
+    # lib/armeabi-v7a/libdep.so
+    ```
+  </Accordion>
+  
+  <Accordion title="Large APK size">
+    **Problem**: APK too large with multiple ABIs
+    
+    **Solutions**:
+    1. Use Android App Bundle (recommended)
+    2. Use APK splits
+    3. Remove unnecessary ABIs (x86/x86_64 if not needed)
+    4. Use ProGuard/R8 to remove unused code
+    
+    ```groovy
+    // Optimize library size
+    android {
+        buildTypes {
+            release {
+                minifyEnabled true
+                
+                // Strip debug symbols
+                packagingOptions {
+                    doNotStrip '*/arm64-v8a/*.so'
+                    doNotStrip '*/armeabi-v7a/*.so'
+                }
+            }
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+- Learn about [bionic](/concepts/bionic) C library differences
+- Explore [build systems](/build/overview) for multi-ABI compilation
+- Understand [native development](/concepts/native-development) best practices
+
+<Info>
+  For the latest ABI support and device statistics, check the [Android Developer Dashboard](https://developer.android.com/about/dashboards).
+</Info>

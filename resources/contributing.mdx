@@ -1,0 +1,59 @@
+---
+title: Contributing to the NDK
+description: Learn how to contribute to the Android NDK through bug reports and patch submissions
+---
+
+This guide will help you contribute to the Android NDK, whether by reporting issues or submitting patches.
+
+## Reporting issues
+
+Our bug tracker is hosted on [GitHub Issues](https://github.com/android-ndk/ndk/issues).
+
+<Note>
+Bugs against Android Studio or Gradle should be filed at [b.android.com](http://b.android.com), not in the NDK issue tracker.
+</Note>
+
+Before filing a bug, check that you are using the latest version of the NDK. The latest stable version and the preview release of the next stable version are listed on the [NDK wiki](https://github.com/android-ndk/ndk/wiki#downloads).
+
+## Submitting patches
+
+While we use GitHub for bug tracking and documentation, we do not manage our code in GitHub. Like the rest of Android, we are hosted in AOSP. This means that patches are uploaded to and submitted via Gerrit.
+
+<Steps>
+  <Step title="Follow AOSP contribution instructions">
+    Follow the [contribution instructions for AOSP](http://source.android.com/source/submit-patches.html).
+  </Step>
+  
+  <Step title="Initialize the repository">
+    When you run `repo init`, follow the instructions in the [NDK README.md](https://android.googlesource.com/platform/ndk/+/master/README.md). The NDK has a different set of dependencies than AOSP.
+  </Step>
+  
+  <Step title="Build and test">
+    Instructions for building the NDK and running tests are documented in [README.md](https://android.googlesource.com/platform/ndk/+/master/README.md) and [Testing.md](https://android.googlesource.com/platform/ndk/+/master/docs/Testing.md).
+    
+    <Warning>
+    The NDK cannot be built on Windows; only Linux and Darwin hosts are supported.
+    </Warning>
+  </Step>
+  
+  <Step title="Upload your change to Gerrit">
+    Upload your patch to [Gerrit](https://android-review.googlesource.com) following the AOSP workflow.
+  </Step>
+  
+  <Step title="Find reviewers">
+    Use the [FIND OWNERS] button in the Gerrit UI to find appropriate reviewers for your change.
+  </Step>
+  
+  <Step title="Wait for presubmit checks">
+    The NDK uses TreeHugger as a presubmit service (similar to CI/CD for Gerrit).
+    
+    - If you're a Googler, TreeHugger will check your change automatically when you upload it
+    - If you're not a Googler, you'll need to get a Googler to approve the change before TreeHugger will run it
+  </Step>
+</Steps>
+
+## Resources
+
+- [AOSP Source Control Tools](http://source.android.com/source/)
+- [Gerrit Code Review](https://android-review.googlesource.com)
+- [NDK Source on AOSP](https://android.googlesource.com/platform/ndk/)

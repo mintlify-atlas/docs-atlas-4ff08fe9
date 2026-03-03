@@ -1,0 +1,389 @@
+---
+title: "Neural networks API"
+description: "Run ML inference on Android with hardware acceleration"
+---
+
+The Android Neural Networks API (NNAPI) provides hardware-accelerated machine learning inference on Android devices, enabling efficient on-device ML model execution.
+
+## Overview
+
+NNAPI is a C API that serves as a bridge between your application and hardware accelerators like GPUs, DSPs, and dedicated neural network processors.
+
+### Key benefits
+
+- **Hardware acceleration** - Automatically uses the best available hardware accelerator
+- **Reduced latency** - On-device inference eliminates network round trips
+- **Privacy** - Data stays on device
+- **Offline support** - Works without internet connectivity
+
+<Note>
+NNAPI is available starting from Android 8.1 (API level 27), with significant improvements in subsequent releases.
+</Note>
+
+## Getting started
+
+<Steps>
+<Step title="Add NNAPI to your build">
+
+In `CMakeLists.txt`:
+
+```cmake
+find_library(neuralnetworks-lib neuralnetworks)
+target_link_libraries(your-app ${neuralnetworks-lib})
+```
+
+For ndk-build, in `Android.mk`:
+
+```makefile
+LOCAL_LDLIBS := -lneuralnetworks
+```
+
+</Step>
+
+<Step title="Include the NNAPI header">
+
+```c
+#include <android/NeuralNetworks.h>
+```
+
+</Step>
+
+<Step title="Check NNAPI availability">
+
+```c
+#include <android/api-level.h>
+
+bool isNNAPIAvailable() {
+    return android_get_device_api_level() >= 27;
+}
+```
+
+</Step>
+</Steps>
+
+## Building a neural network model
+
+### Create the model
+
+```c
+ANeuralNetworksModel* model = NULL;
+ANeuralNetworksModel_create(&model);
+
+// Add operands
+ANeuralNetworksOperandType input_type = {
+    .type = ANEURALNETWORKS_TENSOR_FLOAT32,
+    .dimensionCount = 4,
+    .dimensions = (uint32_t[]){1, 224, 224, 3},  // Batch, Height, Width, Channels
+    .scale = 0.0f,
+    .zeroPoint = 0
+};
+
+uint32_t input_index;
+ANeuralNetworksModel_addOperand(model, &input_type);
+```
+
+### Define model operations
+
+```c
+// Example: Add a convolution operation
+ANeuralNetworksOperandType filter_type = {
+    .type = ANEURALNETWORKS_TENSOR_FLOAT32,
+    .dimensionCount = 4,
+    .dimensions = (uint32_t[]){32, 3, 3, 3},  // Output channels, H, W, Input channels
+};
+
+uint32_t filter_index;
+ANeuralNetworksModel_addOperand(model, &filter_type);
+
+// Set filter weights
+float* filter_data = loadFilterWeights();
+ANeuralNetworksModel_setOperandValue(model, filter_index, 
+                                     filter_data, 
+                                     sizeof(float) * 32 * 3 * 3 * 3);
+
+// Add convolution operation
+uint32_t inputs[] = {input_index, filter_index, /* bias, padding, stride, etc. */};
+uint32_t outputs[] = {output_index};
+ANeuralNetworksModel_addOperation(model, 
+                                  ANEURALNETWORKS_CONV_2D,
+                                  sizeof(inputs)/sizeof(uint32_t), inputs,
+                                  sizeof(outputs)/sizeof(uint32_t), outputs);
+```
+
+### Specify model inputs and outputs
+
+```c
+uint32_t model_inputs[] = {input_index};
+uint32_t model_outputs[] = {output_index};
+
+ANeuralNetworksModel_identifyInputsAndOutputs(
+    model,
+    1, model_inputs,
+    1, model_outputs
+);
+
+// Finish model construction
+ANeuralNetworksModel_finish(model);
+```
+
+<Tip>
+For complex models, consider using TensorFlow Lite with NNAPI delegation instead of building models manually with NNAPI.
+</Tip>
+
+## Executing inference
+
+### Create compilation
+
+```c
+ANeuralNetworksCompilation* compilation;
+ANeuralNetworksCompilation_create(model, &compilation);
+
+// Set preference
+ANeuralNetworksCompilation_setPreference(compilation, 
+    ANEURALNETWORKS_PREFER_SUSTAINED_SPEED);
+
+// Finish compilation
+ANeuralNetworksCompilation_finish(compilation);
+```
+
+### Performance preferences
+
+- `ANEURALNETWORKS_PREFER_LOW_POWER` - Optimize for battery life
+- `ANEURALNETWORKS_PREFER_FAST_SINGLE_ANSWER` - Optimize for low latency
+- `ANEURALNETWORKS_PREFER_SUSTAINED_SPEED` - Balance performance and power for repeated inference
+
+### Run inference
+
+```c
+ANeuralNetworksExecution* execution;
+ANeuralNetworksExecution_create(compilation, &execution);
+
+// Set input data
+float* input_data = preprocessImage();
+ANeuralNetworksExecution_setInput(execution, 0, NULL, 
+                                  input_data, 
+                                  sizeof(float) * 1 * 224 * 224 * 3);
+
+// Set output buffer
+float output_data[1000];  // For 1000 class classification
+ANeuralNetworksExecution_setOutput(execution, 0, NULL,
+                                   output_data,
+                                   sizeof(output_data));
+
+// Execute
+ANeuralNetworksEvent* event = NULL;
+int result = ANeuralNetworksExecution_startCompute(execution, &event);
+
+if (result == ANEURALNETWORKS_NO_ERROR) {
+    // Wait for completion
+    ANeuralNetworksEvent_wait(event);
+    ANeuralNetworksEvent_free(event);
+    
+    // Process output_data
+    int predicted_class = argmax(output_data, 1000);
+}
+
+ANeuralNetworksExecution_free(execution);
+```
+
+## Using TensorFlow Lite with NNAPI
+
+TensorFlow Lite provides a higher-level API with NNAPI delegation:
+
+### Setup
+
+In `build.gradle`:
+
+```groovy
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite:2.13.0'
+}
+```
+
+### Load and run model
+
+```cpp
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
+// Load model
+std::unique_ptr<tflite::FlatBufferModel> model =
+    tflite::FlatBufferModel::BuildFromFile("model.tflite");
+
+// Build interpreter
+tflite::ops::builtin::BuiltinOpResolver resolver;
+tflite::InterpreterBuilder builder(*model, resolver);
+std::unique_ptr<tflite::Interpreter> interpreter;
+builder(&interpreter);
+
+// Enable NNAPI delegate
+auto nnapi_delegate = tflite::NnApiDelegate();
+interpreter->ModifyGraphWithDelegate(&nnapi_delegate);
+
+// Allocate tensors
+interpreter->AllocateTensors();
+
+// Set input
+float* input = interpreter->typed_input_tensor<float>(0);
+memcpy(input, input_data, input_size * sizeof(float));
+
+// Run inference
+interpreter->Invoke();
+
+// Get output
+float* output = interpreter->typed_output_tensor<float>(0);
+```
+
+<Note>
+TensorFlow Lite automatically falls back to CPU execution if NNAPI is unavailable or doesn't support certain operations.
+</Note>
+
+## Hardware acceleration
+
+### Query available accelerators
+
+```c
+// Get number of devices (Android 10+)
+uint32_t numDevices = 0;
+ANeuralNetworks_getDeviceCount(&numDevices);
+
+for (uint32_t i = 0; i < numDevices; i++) {
+    ANeuralNetworksDevice* device;
+    ANeuralNetworks_getDevice(i, &device);
+    
+    const char* name;
+    ANeuralNetworksDevice_getName(device, &name);
+    
+    int32_t type;
+    ANeuralNetworksDevice_getType(device, &type);
+    
+    // Type can be:
+    // ANEURALNETWORKS_DEVICE_ACCELERATOR
+    // ANEURALNETWORKS_DEVICE_CPU
+    // ANEURALNETWORKS_DEVICE_GPU
+}
+```
+
+### Specify execution device
+
+```c
+// Compile for specific device (Android 10+)
+ANeuralNetworksDevice* device;
+ANeuralNetworks_getDevice(0, &device);
+
+ANeuralNetworksCompilation_createForDevices(model, &device, 1, &compilation);
+```
+
+## Optimizing models for NNAPI
+
+### Use supported operations
+
+Not all operations are hardware-accelerated. Check the [NNAPI operator support](https://developer.android.com/ndk/guides/neuralnetworks#model) for your target API level.
+
+### Quantization
+
+Quantize models to 8-bit integers for better performance:
+
+```python
+# Using TensorFlow Lite converter
+import tensorflow as tf
+
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+tflite_quant_model = converter.convert()
+```
+
+<Tip>
+Quantized models are typically 4x smaller and run 2-3x faster on NNAPI with minimal accuracy loss.
+</Tip>
+
+### Input preprocessing
+
+Perform preprocessing (normalization, resizing) efficiently:
+
+```cpp
+// Use Android's ImageReader or Bitmap APIs from Java/Kotlin
+// Then pass preprocessed data to native code
+
+void preprocessImage(uint8_t* rgba_data, int width, int height, float* output) {
+    // Normalize to [-1, 1] or [0, 1] depending on model
+    for (int i = 0; i < width * height; i++) {
+        output[i * 3 + 0] = (rgba_data[i * 4 + 0] / 255.0f - 0.5f) * 2.0f;  // R
+        output[i * 3 + 1] = (rgba_data[i * 4 + 1] / 255.0f - 0.5f) * 2.0f;  // G
+        output[i * 3 + 2] = (rgba_data[i * 4 + 2] / 255.0f - 0.5f) * 2.0f;  // B
+    }
+}
+```
+
+## Error handling
+
+```c
+int result = ANeuralNetworksExecution_startCompute(execution, &event);
+
+switch (result) {
+    case ANEURALNETWORKS_NO_ERROR:
+        // Success
+        break;
+    case ANEURALNETWORKS_OUT_OF_MEMORY:
+        // Handle OOM
+        break;
+    case ANEURALNETWORKS_INCOMPLETE:
+        // Model construction incomplete
+        break;
+    case ANEURALNETWORKS_UNEXPECTED_NULL:
+        // Null pointer passed
+        break;
+    case ANEURALNETWORKS_BAD_DATA:
+        // Invalid model data
+        break;
+    default:
+        // Other error
+        break;
+}
+```
+
+## Best practices
+
+- **Reuse compilations** - Compile once, execute many times for better performance
+- **Batch processing** - Process multiple inputs in a single inference when possible
+- **Quantize models** - Use 8-bit quantization for faster execution and smaller model size
+- **Profile on target devices** - Performance varies significantly across device accelerators
+- **Provide CPU fallback** - Not all operations are supported on all accelerators
+- **Cache compiled models** - Save compilation results to disk to reduce startup time (Android 10+)
+- **Test API level support** - Use feature detection, not just API level checks
+
+<Warning>
+Always test on a variety of devices. Some low-end devices may execute models faster on CPU than with their hardware accelerators.
+</Warning>
+
+## Debugging and profiling
+
+### Enable verbose logging
+
+```bash
+adb shell setprop debug.nn.vlog 1
+adb logcat -s NNAPI
+```
+
+### Benchmark performance
+
+```cpp
+#include <chrono>
+
+auto start = std::chrono::high_resolution_clock::now();
+ANeuralNetworksExecution_startCompute(execution, &event);
+ANeuralNetworksEvent_wait(event);
+auto end = std::chrono::high_resolution_clock::now();
+
+float inference_time = std::chrono::duration<float, std::milli>(end - start).count();
+printf("Inference time: %.2f ms\n", inference_time);
+```
+
+## Additional resources
+
+- [NNAPI Reference](https://developer.android.com/ndk/reference/group/neural-networks) - Official API documentation
+- [Neural Networks API Guide](https://developer.android.com/ndk/guides/neuralnetworks) - Comprehensive developer guide
+- [TensorFlow Lite](https://www.tensorflow.org/lite/android) - High-level ML framework with NNAPI support
+- [Model optimization](https://www.tensorflow.org/lite/performance/model_optimization) - Techniques for faster inference

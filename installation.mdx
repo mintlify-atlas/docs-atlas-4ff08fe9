@@ -1,0 +1,263 @@
+---
+title: Install Android NDK
+description: Step-by-step guide to installing the Android NDK on Linux, macOS, and Windows
+---
+
+# Install Android NDK
+
+This guide walks you through installing the Android NDK on your development machine. You can install the NDK through Android Studio (recommended) or as a standalone download.
+
+<Note>
+  Before installing the NDK, ensure you have the latest version. Check the [NDK downloads page](https://github.com/android-ndk/ndk/wiki#downloads) for the latest stable and preview releases.
+</Note>
+
+## Prerequisites
+
+Before installing the NDK, you need:
+
+- **Android Studio** (recommended) or Android SDK command-line tools
+- **Java Development Kit (JDK)** version 8 or higher
+- At least **5 GB of free disk space** for the NDK and build tools
+- A supported operating system: Linux, macOS, or Windows
+
+<Warning>
+  While you can use the NDK for app development on Windows, building the NDK itself from source is only supported on Linux and macOS.
+</Warning>
+
+## Method 1: Install via Android Studio (recommended)
+
+This is the easiest method and recommended for most developers.
+
+<Steps>
+  <Step title="Open Android Studio">
+    Launch Android Studio. If you don't have it installed, download it from [developer.android.com](https://developer.android.com/studio).
+  </Step>
+  
+  <Step title="Open SDK Manager">
+    Navigate to **Tools > SDK Manager** from the menu bar.
+    
+    Alternatively, click the SDK Manager icon in the toolbar or go to **File > Settings > Appearance & Behavior > System Settings > Android SDK** (on Windows/Linux) or **Android Studio > Preferences > Appearance & Behavior > System Settings > Android SDK** (on macOS).
+  </Step>
+  
+  <Step title="Navigate to SDK Tools tab">
+    In the SDK Manager window, click on the **SDK Tools** tab.
+  </Step>
+  
+  <Step title="Select NDK and CMake">
+    Check the following items:
+    - **NDK (Side by side)** - This installs the NDK
+    - **CMake** - Build system for native code (recommended)
+    - **LLDB** - Debugger for native code (recommended)
+    
+    The "Side by side" option allows you to install multiple NDK versions simultaneously.
+  </Step>
+  
+  <Step title="Apply and install">
+    Click **Apply** or **OK** to begin the installation. Android Studio will download and install the selected components.
+    
+    The installation may take several minutes depending on your internet connection.
+  </Step>
+  
+  <Step title="Verify installation">
+    After installation completes, you can find the NDK at:
+    
+    <CodeGroup>
+    ```bash Linux/macOS
+    ~/Android/Sdk/ndk/<version>
+    # or
+    ~/Library/Android/sdk/ndk/<version>  # macOS
+    ```
+    
+    ```powershell Windows
+    %LOCALAPPDATA%\Android\Sdk\ndk\<version>
+    # Typically: C:\Users\<username>\AppData\Local\Android\Sdk\ndk\<version>
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Method 2: Install standalone NDK
+
+You can download the NDK as a standalone package without Android Studio.
+
+<Steps>
+  <Step title="Download the NDK">
+    Visit the [NDK downloads page](https://developer.android.com/ndk/downloads) and download the appropriate package for your operating system:
+    
+    - **Linux**: `android-ndk-r<version>-linux.zip`
+    - **macOS**: `android-ndk-r<version>-darwin.dmg` or `.zip`
+    - **Windows**: `android-ndk-r<version>-windows.zip`
+    
+    <Note>
+      Check the [NDK wiki](https://github.com/android-ndk/ndk/wiki#downloads) for the latest stable and preview versions.
+    </Note>
+  </Step>
+  
+  <Step title="Extract the archive">
+    Extract the downloaded archive to a location of your choice:
+    
+    <CodeGroup>
+    ```bash Linux
+    unzip android-ndk-r<version>-linux.zip -d ~/android-ndk
+    ```
+    
+    ```bash macOS
+    # If you downloaded the .zip file:
+    unzip android-ndk-r<version>-darwin.zip -d ~/android-ndk
+    
+    # If you downloaded the .dmg file:
+    # Open the .dmg and copy the contents to your desired location
+    ```
+    
+    ```powershell Windows
+    # Extract to C:\android-ndk or another location
+    # Use Windows Explorer or:
+    Expand-Archive android-ndk-r<version>-windows.zip -DestinationPath C:\android-ndk
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Set environment variables">
+    Add the NDK to your system PATH for easier access:
+    
+    <CodeGroup>
+    ```bash Linux/macOS (bash)
+    # Add to ~/.bashrc or ~/.bash_profile
+    export ANDROID_NDK_HOME=~/android-ndk/android-ndk-r<version>
+    export PATH=$PATH:$ANDROID_NDK_HOME
+    ```
+    
+    ```zsh macOS (zsh)
+    # Add to ~/.zshrc
+    export ANDROID_NDK_HOME=~/android-ndk/android-ndk-r<version>
+    export PATH=$PATH:$ANDROID_NDK_HOME
+    ```
+    
+    ```powershell Windows
+    # Add to System Environment Variables via Control Panel or:
+    [System.Environment]::SetEnvironmentVariable('ANDROID_NDK_HOME', 'C:\android-ndk\android-ndk-r<version>', 'User')
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Verify the installation">
+    Open a new terminal and verify the NDK is accessible:
+    
+    <CodeGroup>
+    ```bash Linux/macOS
+    ndk-build --version
+    # Or check the directory:
+    ls $ANDROID_NDK_HOME
+    ```
+    
+    ```powershell Windows
+    ndk-build.cmd --version
+    # Or check the directory:
+    dir %ANDROID_NDK_HOME%
+    ```
+    </CodeGroup>
+    
+    You should see version information and NDK files.
+  </Step>
+</Steps>
+
+## Method 3: Install via command line (SDK Manager)
+
+If you have the Android SDK command-line tools, you can install the NDK using sdkmanager.
+
+<Steps>
+  <Step title="List available NDK versions">
+    ```bash
+    sdkmanager --list | grep ndk
+    ```
+    
+    This shows all available NDK versions.
+  </Step>
+  
+  <Step title="Install the NDK">
+    Install a specific NDK version:
+    
+    ```bash
+    sdkmanager --install "ndk;<version>"
+    ```
+    
+    For example:
+    ```bash
+    sdkmanager --install "ndk;25.2.9519653"
+    ```
+    
+    Or install the latest version:
+    ```bash
+    sdkmanager --install "ndk-bundle"
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    sdkmanager --list_installed | grep ndk
+    ```
+  </Step>
+</Steps>
+
+## Platform-specific considerations
+
+### Linux
+
+- Ensure you have the required 32-bit libraries if you're on a 64-bit system:
+  ```bash
+  sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386 lib32z1
+  ```
+
+- Some distributions may require additional dependencies. Check the NDK documentation for your specific distribution.
+
+### macOS
+
+- macOS 10.14 (Mojave) or later is required for recent NDK versions
+- Xcode Command Line Tools must be installed:
+  ```bash
+  xcode-select --install
+  ```
+
+### Windows
+
+- Windows 7 or later (64-bit) is required
+- The NDK works with both Command Prompt and PowerShell
+- Consider using Windows Subsystem for Linux (WSL) for a Linux-like development experience
+
+## Troubleshooting
+
+### NDK not found in Android Studio
+
+If Android Studio doesn't detect your NDK:
+
+1. Go to **File > Project Structure > SDK Location**
+2. Set the Android NDK location manually to your NDK installation directory
+
+### Multiple NDK versions
+
+Android Studio's "side by side" installation allows multiple NDK versions:
+
+- Versions are installed in separate directories: `ndk/<version>/`
+- Configure which version to use in your project's `build.gradle`:
+
+```groovy
+android {
+    ndkVersion "25.2.9519653"
+}
+```
+
+### Permission denied errors
+
+On Linux/macOS, if you encounter permission issues:
+
+```bash
+chmod -R +x ~/Android/Sdk/ndk/<version>
+```
+
+## Next steps
+
+Now that you have the NDK installed, you're ready to build native Android applications. Continue to the [quick start guide](/quickstart) to create your first native app.
+
+<Note>
+  Keep your NDK updated by regularly checking for new versions through the SDK Manager or the [NDK downloads page](https://github.com/android-ndk/ndk/wiki#downloads).
+</Note>

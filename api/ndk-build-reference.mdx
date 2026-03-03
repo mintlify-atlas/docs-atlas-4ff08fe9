@@ -1,0 +1,474 @@
+---
+title: 'ndk-build reference'
+description: 'Complete reference for Android.mk and Application.mk build system variables'
+---
+
+The ndk-build system uses GNU Make to build native code. It relies on two key configuration files: `Android.mk` (module definitions) and `Application.mk` (application-wide settings).
+
+## Android.mk variables
+
+The `Android.mk` file defines build modules and their properties. Each module describes a single library or executable.
+
+### Module definition
+
+<ParamField path="LOCAL_PATH" type="path" required>
+  Must be the first line of every `Android.mk` file. Defines the location of source files in the development tree.
+  
+  ```makefile
+  LOCAL_PATH := $(call my-dir)
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_MODULE" type="string" required>
+  The name of the module you want to build. Must be unique across all module names and not contain spaces.
+  
+  ```makefile
+  LOCAL_MODULE := native-lib
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_MODULE_FILENAME" type="string">
+  Optional override for the generated file name. By default, the module name determines the output file name.
+  
+  ```makefile
+  LOCAL_MODULE_FILENAME := libnative
+  ```
+</ParamField>
+
+### Source files
+
+<ParamField path="LOCAL_SRC_FILES" type="list" required>
+  List of C/C++ source files to compile. Paths are relative to `LOCAL_PATH`.
+  
+  ```makefile
+  LOCAL_SRC_FILES := native-lib.c \
+                     utils.cpp \
+                     helpers.cpp
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_CPP_EXTENSION" type="string">
+  File extensions for C++ source files. Default is `.cpp`. Use this if your files use different extensions.
+  
+  ```makefile
+  LOCAL_CPP_EXTENSION := .cxx .cc
+  ```
+</ParamField>
+
+### Compilation flags
+
+<ParamField path="LOCAL_CFLAGS" type="string">
+  Compiler flags for C and C++ files. Use for optimization, warnings, and feature flags.
+  
+  ```makefile
+  LOCAL_CFLAGS := -Wall -Wextra -O2 -DNDEBUG
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_CPPFLAGS" type="string">
+  Compiler flags for C++ files only.
+  
+  ```makefile
+  LOCAL_CPPFLAGS := -std=c++17 -fno-rtti -fno-exceptions
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_CONLYFLAGS" type="string">
+  Compiler flags for C files only.
+  
+  ```makefile
+  LOCAL_CONLYFLAGS := -std=c11
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_ASMFLAGS" type="string">
+  Assembler flags for assembly files.
+  
+  ```makefile
+  LOCAL_ASMFLAGS := -march=armv7-a
+  ```
+</ParamField>
+
+### Include paths and libraries
+
+<ParamField path="LOCAL_C_INCLUDES" type="list">
+  Additional include directories. Paths can be absolute or relative to NDK root.
+  
+  ```makefile
+  LOCAL_C_INCLUDES := $(LOCAL_PATH)/include \
+                      $(NDK_ROOT)/sources/android/cpufeatures
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_EXPORT_C_INCLUDES" type="list">
+  Include paths to export to modules that depend on this one.
+  
+  ```makefile
+  LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/include
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_STATIC_LIBRARIES" type="list">
+  List of static libraries to link against. Reference other ndk-build modules by name.
+  
+  ```makefile
+  LOCAL_STATIC_LIBRARIES := cpufeatures android_support
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_SHARED_LIBRARIES" type="list">
+  List of shared libraries to link against.
+  
+  ```makefile
+  LOCAL_SHARED_LIBRARIES := log android
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_WHOLE_STATIC_LIBRARIES" type="list">
+  Static libraries to link with `--whole-archive` flag. All object files from the library are included.
+  
+  ```makefile
+  LOCAL_WHOLE_STATIC_LIBRARIES := mystaticlib
+  ```
+</ParamField>
+
+### Linking flags
+
+<ParamField path="LOCAL_LDFLAGS" type="string">
+  Linker flags to use when building shared libraries or executables.
+  
+  ```makefile
+  LOCAL_LDFLAGS := -Wl,--no-undefined -Wl,--version-script=exports.txt
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_LDLIBS" type="string">
+  System libraries to link against. Use the `-l` prefix.
+  
+  ```makefile
+  LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv2
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_ALLOW_UNDEFINED_SYMBOLS" type="boolean">
+  Allow undefined symbols in shared libraries. Default is `false`.
+  
+  ```makefile
+  LOCAL_ALLOW_UNDEFINED_SYMBOLS := true
+  ```
+</ParamField>
+
+### Preprocessor definitions
+
+<ParamField path="LOCAL_CFLAGS" type="string">
+  Use `-D` flags to define preprocessor macros.
+  
+  ```makefile
+  LOCAL_CFLAGS += -DENABLE_LOGGING -DVERSION=\"1.0.0\"
+  ```
+</ParamField>
+
+<ParamField path="LOCAL_EXPORT_CFLAGS" type="string">
+  Compiler flags to export to dependent modules.
+  
+  ```makefile
+  LOCAL_EXPORT_CFLAGS := -DUSE_FEATURE_X
+  ```
+</ParamField>
+
+### Module types
+
+Each module must include one of these module type definitions:
+
+| Module Type | Description | Usage |
+|-------------|-------------|-------|
+| `BUILD_SHARED_LIBRARY` | Builds a shared library (.so) | `include $(BUILD_SHARED_LIBRARY)` |
+| `BUILD_STATIC_LIBRARY` | Builds a static library (.a) | `include $(BUILD_STATIC_LIBRARY)` |
+| `BUILD_EXECUTABLE` | Builds a native executable | `include $(BUILD_EXECUTABLE)` |
+| `PREBUILT_SHARED_LIBRARY` | Uses a prebuilt shared library | `include $(PREBUILT_SHARED_LIBRARY)` |
+| `PREBUILT_STATIC_LIBRARY` | Uses a prebuilt static library | `include $(PREBUILT_STATIC_LIBRARY)` |
+
+### Complete Android.mk example
+
+```makefile
+LOCAL_PATH := $(call my-dir)
+
+# Clear variables
+include $(CLEAR_VARS)
+
+# Module configuration
+LOCAL_MODULE := native-audio
+LOCAL_SRC_FILES := native-audio.cpp \
+                   audio-engine.cpp \
+                   audio-player.cpp
+
+# Compilation flags
+LOCAL_CPPFLAGS := -std=c++17 -Wall -Wextra
+LOCAL_CFLAGS := -O2 -DNDEBUG
+
+# Include paths
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+
+# Libraries
+LOCAL_LDLIBS := -llog -lOpenSLES -landroid
+LOCAL_STATIC_LIBRARIES := cpufeatures
+
+# Build shared library
+include $(BUILD_SHARED_LIBRARY)
+
+# Import prebuilt modules
+$(call import-module,android/cpufeatures)
+```
+
+## Application.mk variables
+
+The `Application.mk` file describes application-wide settings. It's optional and located in `jni/Application.mk`.
+
+### Platform and ABI configuration
+
+<ParamField path="APP_ABI" type="string">
+  Target ABIs to build for. Can specify multiple ABIs or use `all` for all supported ABIs.
+  
+  ```makefile
+  APP_ABI := armeabi-v7a arm64-v8a x86 x86_64
+  # Or build for all ABIs
+  APP_ABI := all
+  ```
+</ParamField>
+
+<Note>
+  Common ABI values: `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`. The `armeabi` and `mips` ABIs are deprecated.
+</Note>
+
+<ParamField path="APP_PLATFORM" type="string">
+  Android API level to target. Higher API levels provide more functionality but reduce compatibility.
+  
+  ```makefile
+  APP_PLATFORM := android-21
+  ```
+</ParamField>
+
+### Build configuration
+
+<ParamField path="APP_OPTIM" type="string">
+  Optimization level: `release` or `debug`. Default is `release` unless `APP_DEBUG` is true.
+  
+  ```makefile
+  APP_OPTIM := release
+  ```
+</ParamField>
+
+<ParamField path="APP_DEBUG" type="boolean">
+  Build debuggable binaries with symbols. Set to `true` or `false`.
+  
+  ```makefile
+  APP_DEBUG := false
+  ```
+</ParamField>
+
+<ParamField path="APP_CFLAGS" type="string">
+  C/C++ compiler flags for all modules.
+  
+  ```makefile
+  APP_CFLAGS := -Wall -Werror
+  ```
+</ParamField>
+
+<ParamField path="APP_CPPFLAGS" type="string">
+  C++ compiler flags for all modules.
+  
+  ```makefile
+  APP_CPPFLAGS := -std=c++17 -frtti -fexceptions
+  ```
+</ParamField>
+
+<ParamField path="APP_LDFLAGS" type="string">
+  Linker flags for all modules.
+  
+  ```makefile
+  APP_LDFLAGS := -Wl,--build-id
+  ```
+</ParamField>
+
+### STL configuration
+
+<ParamField path="APP_STL" type="string">
+  C++ Standard Library to use. Options include `c++_shared`, `c++_static`, `none`, or `system`.
+  
+  ```makefile
+  APP_STL := c++_shared
+  ```
+</ParamField>
+
+| STL Option | Description |
+|------------|-------------|
+| `c++_shared` | LLVM libc++ as shared library (recommended) |
+| `c++_static` | LLVM libc++ as static library |
+| `none` | No C++ standard library |
+| `system` | System C++ runtime (minimal, deprecated) |
+
+<Note>
+  Use `c++_shared` for most applications. If you use `c++_static`, ensure all shared libraries use the same STL to avoid ODR violations.
+</Note>
+
+### Module configuration
+
+<ParamField path="APP_MODULES" type="list">
+  Explicit list of modules to build. If not specified, all modules are built.
+  
+  ```makefile
+  APP_MODULES := native-lib audio-engine
+  ```
+</ParamField>
+
+<ParamField path="APP_PROJECT_PATH" type="path">
+  Absolute path to the project root. Default is the parent of the `Application.mk` directory.
+  
+  ```makefile
+  APP_PROJECT_PATH := $(call my-dir)/..
+  ```
+</ParamField>
+
+<ParamField path="APP_BUILD_SCRIPT" type="path">
+  Path to the build script. Default is `$(APP_PROJECT_PATH)/jni/Android.mk`.
+  
+  ```makefile
+  APP_BUILD_SCRIPT := $(call my-dir)/custom.mk
+  ```
+</ParamField>
+
+### Advanced settings
+
+<ParamField path="APP_SHORT_COMMANDS" type="boolean">
+  Use shorter command lines for build commands. Useful on Windows. Default is `false`.
+  
+  ```makefile
+  APP_SHORT_COMMANDS := true
+  ```
+</ParamField>
+
+<ParamField path="APP_THIN_ARCHIVE" type="boolean">
+  Use thin archives for static libraries. Reduces build size. Default is `false`.
+  
+  ```makefile
+  APP_THIN_ARCHIVE := true
+  ```
+</ParamField>
+
+<ParamField path="APP_WRAP_SH" type="string">
+  Script to wrap build commands. Useful for build analysis tools.
+  
+  ```makefile
+  APP_WRAP_SH := wrapper-script.sh
+  ```
+</ParamField>
+
+### Complete Application.mk example
+
+```makefile
+# Target multiple ABIs
+APP_ABI := armeabi-v7a arm64-v8a x86_64
+
+# Target Android 5.0 and higher
+APP_PLATFORM := android-21
+
+# Use shared C++ library
+APP_STL := c++_shared
+
+# Release build with optimizations
+APP_OPTIM := release
+
+# C++ standard and compiler flags
+APP_CPPFLAGS := -std=c++17 -frtti -fexceptions
+APP_CFLAGS := -Wall -Werror
+
+# Only build specific modules
+APP_MODULES := native-lib audio-engine
+```
+
+## Build system functions
+
+The ndk-build system provides several helper functions:
+
+| Function | Description |
+|----------|-------------|
+| `$(call my-dir)` | Returns the directory of the current makefile |
+| `$(call import-module,<name>)` | Imports a module by name from NDK_MODULE_PATH |
+| `$(call import-add-path,<path>)` | Adds a path to the module search path |
+
+## Common build patterns
+
+### Building multiple modules
+
+```makefile
+LOCAL_PATH := $(call my-dir)
+
+# First module: shared library
+include $(CLEAR_VARS)
+LOCAL_MODULE := engine
+LOCAL_SRC_FILES := engine.cpp
+include $(BUILD_SHARED_LIBRARY)
+
+# Second module: static library
+include $(CLEAR_VARS)
+LOCAL_MODULE := utils
+LOCAL_SRC_FILES := utils.cpp
+include $(BUILD_STATIC_LIBRARY)
+
+# Third module: depends on both
+include $(CLEAR_VARS)
+LOCAL_MODULE := native-lib
+LOCAL_SRC_FILES := native-lib.cpp
+LOCAL_SHARED_LIBRARIES := engine
+LOCAL_STATIC_LIBRARIES := utils
+include $(BUILD_SHARED_LIBRARY)
+```
+
+### Using prebuilt libraries
+
+```makefile
+LOCAL_PATH := $(call my-dir)
+
+# Define prebuilt library
+include $(CLEAR_VARS)
+LOCAL_MODULE := third-party
+LOCAL_SRC_FILES := libs/$(TARGET_ARCH_ABI)/libthirdparty.so
+LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/include
+include $(PREBUILT_SHARED_LIBRARY)
+
+# Use prebuilt library
+include $(CLEAR_VARS)
+LOCAL_MODULE := native-lib
+LOCAL_SRC_FILES := native-lib.cpp
+LOCAL_SHARED_LIBRARIES := third-party
+include $(BUILD_SHARED_LIBRARY)
+```
+
+### Conditional compilation
+
+```makefile
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := native-lib
+LOCAL_SRC_FILES := native-lib.cpp
+
+# Add debug flags for debug builds
+ifeq ($(APP_OPTIM),debug)
+    LOCAL_CFLAGS += -DDEBUG_MODE -g
+else
+    LOCAL_CFLAGS += -DNDEBUG -O3
+endif
+
+# Architecture-specific sources
+ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
+    LOCAL_SRC_FILES += neon_impl.cpp
+    LOCAL_CFLAGS += -mfpu=neon
+endif
+
+include $(BUILD_SHARED_LIBRARY)
+```
+
+<Note>
+  For new projects, consider using CMake instead of ndk-build. CMake offers better IDE integration and is the recommended build system for Android native development.
+</Note>

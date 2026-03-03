@@ -1,0 +1,387 @@
+---
+title: "Graphics and rendering"
+description: "Build high-performance graphics with Vulkan and OpenGL ES"
+---
+
+The Android NDK provides native APIs for hardware-accelerated graphics rendering, enabling high-performance games and graphics-intensive applications.
+
+## Graphics APIs overview
+
+Android supports two primary native graphics APIs:
+
+- **Vulkan** - Modern, low-overhead graphics and compute API introduced in Android 7.0 (API level 24)
+- **OpenGL ES** - Established graphics API available across all Android versions
+
+<Tip>
+For new applications requiring maximum performance and control, use Vulkan. For broader device compatibility, use OpenGL ES 3.x.
+</Tip>
+
+## Vulkan on Android
+
+Vulkan provides explicit control over GPU resources and reduced CPU overhead, making it ideal for demanding graphics applications.
+
+### Setting up Vulkan
+
+<Steps>
+<Step title="Add Vulkan support to your build">
+
+In your `CMakeLists.txt`:
+
+```cmake
+find_library(vulkan-lib vulkan)
+target_link_libraries(your-app ${vulkan-lib})
+```
+
+For ndk-build, in `Android.mk`:
+
+```makefile
+LOCAL_LDLIBS := -lvulkan
+```
+
+</Step>
+
+<Step title="Include Vulkan headers">
+
+```cpp
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_android.h>
+```
+
+</Step>
+
+<Step title="Check for Vulkan support">
+
+```cpp
+#include <android/api-level.h>
+
+bool isVulkanSupported() {
+    if (android_get_device_api_level() < 24) {
+        return false;
+    }
+    
+    uint32_t instanceVersion;
+    vkEnumerateInstanceVersion(&instanceVersion);
+    
+    return instanceVersion >= VK_API_VERSION_1_0;
+}
+```
+
+</Step>
+</Steps>
+
+### Creating a Vulkan instance
+
+```cpp
+VkApplicationInfo appInfo = {};
+appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+appInfo.pApplicationName = "My Application";
+appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.pEngineName = "No Engine";
+appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.apiVersion = VK_API_VERSION_1_0;
+
+VkInstanceCreateInfo createInfo = {};
+createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+createInfo.pApplicationInfo = &appInfo;
+
+// Enable validation layers for debugging (development only)
+const char* validationLayers[] = {"VK_LAYER_KHRONOS_validation"};
+createInfo.enabledLayerCount = 1;
+createInfo.ppEnabledLayerNames = validationLayers;
+
+VkInstance instance;
+if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    // Handle error
+}
+```
+
+<Note>
+Validation layers help catch programming errors during development but should be disabled in release builds for better performance.
+</Note>
+
+### Creating an Android surface
+
+```cpp
+VkAndroidSurfaceCreateInfoKHR surfaceCreateInfo = {};
+surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+surfaceCreateInfo.window = nativeWindow; // ANativeWindow from Java
+
+VkSurfaceKHR surface;
+if (vkCreateAndroidSurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface) != VK_SUCCESS) {
+    // Handle error
+}
+```
+
+### Selecting a physical device
+
+```cpp
+uint32_t deviceCount = 0;
+vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+std::vector<VkPhysicalDevice> devices(deviceCount);
+vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+for (const auto& device : devices) {
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    
+    // Check if device is suitable
+    if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        physicalDevice = device;
+        break;
+    }
+}
+```
+
+## OpenGL ES rendering
+
+OpenGL ES provides a simpler API and works across all Android devices.
+
+### Setting up OpenGL ES
+
+<Steps>
+<Step title="Link against OpenGL ES libraries">
+
+In `CMakeLists.txt`:
+
+```cmake
+find_library(gles3-lib GLESv3)
+find_library(egl-lib EGL)
+target_link_libraries(your-app ${gles3-lib} ${egl-lib})
+```
+
+</Step>
+
+<Step title="Include OpenGL ES headers">
+
+```cpp
+#include <GLES3/gl3.h>
+#include <EGL/egl.h>
+```
+
+</Step>
+
+<Step title="Initialize EGL display">
+
+```cpp
+EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+if (display == EGL_NO_DISPLAY) {
+    // Handle error
+}
+
+eglInitialize(display, nullptr, nullptr);
+
+// Choose config
+const EGLint attribs[] = {
+    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+    EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+    EGL_BLUE_SIZE, 8,
+    EGL_GREEN_SIZE, 8,
+    EGL_RED_SIZE, 8,
+    EGL_DEPTH_SIZE, 24,
+    EGL_NONE
+};
+
+EGLConfig config;
+EGLint numConfigs;
+eglChooseConfig(display, attribs, &config, 1, &numConfigs);
+```
+
+</Step>
+
+<Step title="Create OpenGL ES context">
+
+```cpp
+const EGLint contextAttribs[] = {
+    EGL_CONTEXT_CLIENT_VERSION, 3,
+    EGL_NONE
+};
+
+EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
+
+// Create window surface
+EGLSurface surface = eglCreateWindowSurface(display, config, nativeWindow, nullptr);
+
+// Make context current
+eglMakeCurrent(display, surface, surface, context);
+```
+
+</Step>
+</Steps>
+
+### Basic rendering loop
+
+```cpp
+void renderFrame() {
+    // Clear screen
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    // Enable depth testing
+    glEnable(GL_DEPTH_TEST);
+    
+    // Bind shader program
+    glUseProgram(shaderProgram);
+    
+    // Set uniforms
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvpMatrix);
+    
+    // Bind vertex array
+    glBindVertexArray(vao);
+    
+    // Draw
+    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+    
+    // Swap buffers
+    eglSwapBuffers(display, surface);
+}
+```
+
+## Performance optimization
+
+### Reduce draw calls
+
+Batch geometry to minimize state changes:
+
+```cpp
+// Bad: Multiple draw calls
+for (int i = 0; i < objects.size(); i++) {
+    glBindTexture(GL_TEXTURE_2D, objects[i].texture);
+    glDrawArrays(GL_TRIANGLES, objects[i].offset, objects[i].count);
+}
+
+// Good: Sort by texture and batch
+std::sort(objects.begin(), objects.end(), 
+    [](const Object& a, const Object& b) { return a.texture < b.texture; });
+
+GLuint currentTexture = 0;
+for (const auto& obj : objects) {
+    if (obj.texture != currentTexture) {
+        glBindTexture(GL_TEXTURE_2D, obj.texture);
+        currentTexture = obj.texture;
+    }
+    glDrawArrays(GL_TRIANGLES, obj.offset, obj.count);
+}
+```
+
+### Use vertex buffer objects efficiently
+
+```cpp
+// Create VBO for static geometry
+glGenBuffers(1, &vbo);
+glBindBuffer(GL_ARRAY_BUFFER, vbo);
+glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(Vertex), 
+             vertexData.data(), GL_STATIC_DRAW);
+
+// For dynamic data, use GL_DYNAMIC_DRAW or GL_STREAM_DRAW
+glBufferData(GL_ARRAY_BUFFER, size, nullptr, GL_DYNAMIC_DRAW);
+
+// Update dynamic buffer efficiently
+glBufferSubData(GL_ARRAY_BUFFER, offset, size, data);
+```
+
+### Optimize texture usage
+
+<Tip>
+Use compressed texture formats like ETC2 (required on all OpenGL ES 3.0+ devices) or ASTC for reduced memory bandwidth.
+</Tip>
+
+```cpp
+// Check for ASTC support
+const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
+bool hasASTC = strstr(extensions, "GL_KHR_texture_compression_astc_ldr") != nullptr;
+
+// Load compressed texture
+glCompressedTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_ASTC_4x4_KHR,
+                       width, height, 0, imageSize, data);
+```
+
+### Enable GPU instancing
+
+```cpp
+// Draw multiple instances of the same geometry
+glDrawArraysInstanced(GL_TRIANGLES, 0, vertexCount, instanceCount);
+
+// In vertex shader, use gl_InstanceID to differentiate instances
+```
+
+## Frame pacing and synchronization
+
+### Control frame rate with Choreographer
+
+From the Java/Kotlin layer:
+
+```kotlin
+Choreographer.getInstance().postFrameCallback(object : Choreographer.FrameCallback {
+    override fun doFrame(frameTimeNanos: Long) {
+        nativeRenderFrame(frameTimeNanos)
+        Choreographer.getInstance().postFrameCallback(this)
+    }
+})
+```
+
+### Use EGL sync objects
+
+```cpp
+// Create fence sync
+EGLSyncKHR sync = eglCreateSyncKHR(display, EGL_SYNC_FENCE_KHR, nullptr);
+
+// Wait for GPU to finish
+eglClientWaitSyncKHR(display, sync, 0, EGL_FOREVER_KHR);
+
+eglDestroySyncKHR(display, sync);
+```
+
+<Warning>
+Blocking on GPU completion can reduce performance. Use fences only when synchronization is necessary.
+</Warning>
+
+## Debugging graphics
+
+### Enable GPU debugging
+
+For Vulkan:
+
+```cpp
+// Enable validation layers (development builds only)
+const std::vector<const char*> validationLayers = {
+    "VK_LAYER_KHRONOS_validation"
+};
+```
+
+For OpenGL ES:
+
+```cpp
+// Enable debug output (OpenGL ES 3.2+)
+glEnable(GL_DEBUG_OUTPUT);
+glDebugMessageCallback([](GLenum source, GLenum type, GLuint id, 
+                          GLenum severity, GLsizei length, 
+                          const GLchar* message, const void* userParam) {
+    fprintf(stderr, "GL Debug: %s\n", message);
+}, nullptr);
+```
+
+### Profile with Android GPU Inspector
+
+Android GPU Inspector (AGI) provides frame profiling and shader debugging:
+
+1. Install AGI from the Android developer website
+2. Connect your device via USB
+3. Launch AGI and select your application
+4. Capture a frame to analyze draw calls and GPU performance
+
+## Best practices
+
+- **Target OpenGL ES 3.0+** - Available on 95%+ of devices, provides modern features
+- **Use Vulkan selectively** - For compute-heavy workloads or when you need explicit control
+- **Minimize GPU state changes** - Sort draw calls to reduce pipeline switches
+- **Compress textures** - Use ETC2 or ASTC to reduce memory bandwidth
+- **Profile early and often** - Use Android GPU Inspector and systrace
+- **Test on low-end devices** - Performance varies significantly across device tiers
+
+## Additional resources
+
+- [Vulkan on Android](https://developer.android.com/ndk/guides/graphics/getting-started) - Official getting started guide
+- [OpenGL ES Reference](https://www.khronos.org/opengles/) - OpenGL ES specifications and documentation
+- [Android GPU Inspector](https://gpuinspector.dev/) - Graphics profiling tool

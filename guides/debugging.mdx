@@ -1,0 +1,431 @@
+---
+title: "Debugging native code"
+description: "Debug Android NDK applications with LLDB, ndk-stack, and Android Studio"
+---
+
+Debugging native code on Android requires specialized tools and techniques. This guide covers debugging crashes, setting breakpoints, and inspecting native code execution.
+
+## Debugging tools overview
+
+The NDK provides several debugging tools:
+
+- **Android Studio Debugger** - Integrated debugging with source-level stepping
+- **LLDB** - Command-line debugger for native code
+- **ndk-stack** - Symbolicate native stack traces from logcat
+- **GDB** - Alternative debugger (deprecated, use LLDB instead)
+
+<Tip>
+For most developers, the Android Studio debugger provides the best debugging experience with native code support.
+</Tip>
+
+## Preparing your build for debugging
+
+### Enable debuggable builds
+
+In your `AndroidManifest.xml`:
+
+```xml
+<application
+    android:debuggable="true"
+    ...>
+</application>
+```
+
+Or in `build.gradle`:
+
+```groovy
+android {
+    buildTypes {
+        debug {
+            debuggable true
+            jniDebuggable true
+        }
+    }
+}
+```
+
+### Include debug symbols
+
+For CMake builds, in `CMakeLists.txt`:
+
+```cmake
+# Add debug symbols
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
+
+# Keep symbols in separate files (reduces APK size)
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--build-id")
+```
+
+For ndk-build, in `Android.mk`:
+
+```makefile
+LOCAL_CFLAGS := -O0 -g
+APP_OPTIM := debug
+```
+
+<Note>
+Debug builds with symbols are significantly larger. Use separate debug and release configurations.
+</Note>
+
+## Debugging with Android Studio
+
+### Setting up native debugging
+
+<Steps>
+<Step title="Configure debug type">
+
+In Run/Debug Configuration, set **Debug type** to **Dual** (Java + Native) or **Native**.
+
+</Step>
+
+<Step title="Set breakpoints in native code">
+
+Open your C/C++ source file and click in the gutter next to the line number to set a breakpoint.
+
+```cpp
+void processData(int* data, int size) {
+    for (int i = 0; i < size; i++) {  // <- Set breakpoint here
+        data[i] = data[i] * 2;
+    }
+}
+```
+
+</Step>
+
+<Step title="Start debugging">
+
+Click the Debug button or press Shift+F9. The debugger will attach to your app and pause at breakpoints.
+
+</Step>
+
+<Step title="Inspect variables and step through code">
+
+Use the debugger controls:
+- **Step Over (F8)** - Execute current line
+- **Step Into (F7)** - Step into function calls
+- **Step Out (Shift+F8)** - Return from current function
+- **Resume (F9)** - Continue execution
+
+</Step>
+</Steps>
+
+### Evaluating expressions
+
+In the Variables pane, right-click and select **Evaluate Expression** or press Alt+F8:
+
+```cpp
+// Evaluate:
+data[0] + data[1]
+strlen(myString)
+&myVariable  // Get address
+```
+
+### Conditional breakpoints
+
+Right-click a breakpoint and add a condition:
+
+```cpp
+i > 100
+strstr(name, "error") != NULL
+ptr != nullptr && ptr->value == 42
+```
+
+## Using LLDB from command line
+
+### Attach LLDB to running app
+
+```bash
+# Find the app's process ID
+adb shell ps | grep your.package.name
+
+# Forward LLDB server port
+adb forward tcp:5039 tcp:5039
+
+# Start LLDB server on device
+adb shell /data/local/tmp/lldb-server platform --listen "*:5039" --server
+
+# On your development machine, start LLDB
+lldb
+```
+
+In the LLDB prompt:
+
+```lldb
+(lldb) platform select remote-android
+(lldb) platform connect connect://localhost:5039
+(lldb) attach <pid>
+```
+
+### Setting breakpoints in LLDB
+
+```lldb
+# Break at function
+(lldb) breakpoint set --name processData
+(lldb) br s -n processData  # Shorthand
+
+# Break at file:line
+(lldb) breakpoint set --file myfile.cpp --line 42
+(lldb) br s -f myfile.cpp -l 42  # Shorthand
+
+# Break at address
+(lldb) breakpoint set --address 0x7f8a4c2010
+
+# Conditional breakpoint
+(lldb) breakpoint set -n processData -c "size > 100"
+
+# List breakpoints
+(lldb) breakpoint list
+```
+
+### Inspecting variables
+
+```lldb
+# Print variable
+(lldb) print myVariable
+(lldb) p myVariable  # Shorthand
+
+# Print as specific type
+(lldb) print (int)myVariable
+
+# Print memory
+(lldb) memory read --size 4 --count 10 0x7f8a4c2010
+(lldb) x/10x 0x7f8a4c2010  # Shorthand
+
+# Print array
+(lldb) parray 10 myArray
+
+# Print string
+(lldb) print (char*)myString
+```
+
+### Stepping through code
+
+```lldb
+# Continue execution
+(lldb) continue
+(lldb) c  # Shorthand
+
+# Step over
+(lldb) next
+(lldb) n  # Shorthand
+
+# Step into
+(lldb) step
+(lldb) s  # Shorthand
+
+# Step out
+(lldb) finish
+```
+
+### Examining the call stack
+
+```lldb
+# Show backtrace
+(lldb) thread backtrace
+(lldb) bt  # Shorthand
+
+# Show all threads
+(lldb) thread list
+
+# Select thread
+(lldb) thread select 2
+
+# Show frame variables
+(lldb) frame variable
+(lldb) fr v  # Shorthand
+```
+
+## Analyzing crashes with ndk-stack
+
+ndk-stack symbolizes native stack traces from logcat output.
+
+### Capture crash log
+
+```bash
+# Capture logcat to file
+adb logcat > crash.log
+
+# Wait for crash, then Ctrl+C
+```
+
+### Symbolicate with ndk-stack
+
+```bash
+# Point to your libraries with debug symbols
+export NDK_PATH=/path/to/ndk
+$NDK_PATH/ndk-stack -sym /path/to/obj/local/arm64-v8a -dump crash.log
+```
+
+Output shows source file locations:
+
+```
+stack frame #00 pc 00012345 libmyapp.so (processData+42) myfile.cpp:123
+stack frame #01 pc 00023456 libmyapp.so (main+100) main.cpp:456
+```
+
+<Tip>
+Use ndk-stack even when you don't have the device physically available - just save the logcat output.
+</Tip>
+
+## Understanding tombstones
+
+When native code crashes, Android creates a tombstone file with detailed crash information.
+
+### Retrieve tombstones
+
+```bash
+# List tombstones
+adb shell ls -l /data/tombstones/
+
+# Pull latest tombstone
+adb pull /data/tombstones/tombstone_00 .
+```
+
+### Tombstone contents
+
+A tombstone includes:
+
+- Signal that caused the crash (SIGSEGV, SIGABRT, etc.)
+- Registers at time of crash
+- Stack trace
+- Memory near the crash address
+- Thread information
+
+```
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+    r0 00000000  r1 00000001  r2 7f8a4c20  r3 00000000
+    ...
+
+backtrace:
+    #00 pc 00012345  /data/app/libmyapp.so (processData+42)
+    #01 pc 00023456  /data/app/libmyapp.so (main+100)
+```
+
+### Common crash signals
+
+- **SIGSEGV** - Segmentation fault (null pointer, invalid memory access)
+- **SIGABRT** - Abort called (often from assertions or memory corruption)
+- **SIGILL** - Illegal instruction (corrupted code or wrong architecture)
+- **SIGFPE** - Floating point exception (division by zero)
+- **SIGBUS** - Bus error (misaligned memory access)
+
+<Warning>
+Null pointer dereferences are the most common cause of native crashes. Always validate pointers before use.
+</Warning>
+
+## Common debugging scenarios
+
+### Debugging JNI calls
+
+Enable CheckJNI to catch JNI errors:
+
+```bash
+adb shell setprop debug.checkjni 1
+```
+
+Common JNI errors:
+
+```cpp
+// Bad: Using local reference after function returns
+JNIEXP jobject getObject(JNIEnv* env) {
+    jclass cls = env->FindClass("com/example/MyClass");
+    jobject obj = env->AllocObject(cls);
+    return obj;  // Local reference, will be invalid
+}
+
+// Good: Create global reference
+JNIEXP jobject getObject(JNIEnv* env) {
+    jclass cls = env->FindClass("com/example/MyClass");
+    jobject obj = env->AllocObject(cls);
+    return env->NewGlobalRef(obj);
+}
+```
+
+### Debugging memory issues
+
+Use AddressSanitizer to detect memory errors:
+
+In `build.gradle`:
+
+```groovy
+android {
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared",
+                          "-DANDROID_ARM_MODE=arm"
+                cFlags "-fsanitize=address -fno-omit-frame-pointer"
+                cppFlags "-fsanitize=address -fno-omit-frame-pointer"
+            }
+        }
+    }
+}
+```
+
+### Debugging threading issues
+
+Use Thread Sanitizer for race conditions:
+
+```groovy
+cFlags "-fsanitize=thread"
+cppFlags "-fsanitize=thread"
+```
+
+<Note>
+Sanitizers increase memory usage and reduce performance. Use only in debug builds.
+</Note>
+
+## Logging from native code
+
+### Using Android log
+
+```cpp
+#include <android/log.h>
+
+#define TAG "MyApp"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+void myFunction() {
+    LOGD("Debug message: value = %d", value);
+    LOGE("Error occurred: %s", strerror(errno));
+}
+```
+
+Add to `CMakeLists.txt`:
+
+```cmake
+find_library(log-lib log)
+target_link_libraries(your-app ${log-lib})
+```
+
+### Viewing logs
+
+```bash
+# Filter by tag
+adb logcat -s MyApp
+
+# Filter by priority (V=Verbose, D=Debug, I=Info, W=Warn, E=Error, F=Fatal)
+adb logcat *:E  # Show only errors
+
+# Clear log buffer
+adb logcat -c
+```
+
+## Best practices
+
+- **Use debug builds** - Include symbols and disable optimizations for debugging
+- **Log strategically** - Add logs at key points, but not in tight loops
+- **Validate pointers** - Check for null before dereferencing
+- **Enable sanitizers** - Catch memory and threading issues during development
+- **Save crash logs** - Always capture logcat when debugging crashes
+- **Test on real devices** - Emulators may not reproduce device-specific issues
+- **Use assertions** - Add `assert()` calls to catch invalid assumptions early
+
+## Additional resources
+
+- [LLDB Documentation](https://lldb.llvm.org/use/tutorial.html) - Official LLDB tutorial
+- [Android Debug Guide](https://developer.android.com/ndk/guides/debug) - Official NDK debugging guide
+- [Tombstone Analysis](https://source.android.com/devices/tech/debug/native-crash) - Understanding crash dumps
+- [AddressSanitizer](https://developer.android.com/ndk/guides/asan) - Detecting memory errors

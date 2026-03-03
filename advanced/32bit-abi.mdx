@@ -1,0 +1,306 @@
+---
+title: "32-bit ABI issues"
+description: "Understanding 32-bit ABI bugs, common problems, and migrating to 64-bit"
+---
+
+Android historically supported 32-bit architectures, but several ABI design decisions in early Android versions led to compatibility issues. This page covers common 32-bit problems and best practices for migration.
+
+## Overview
+
+Starting with Android 5.0 (API level 21), Google began requiring 64-bit support. As of August 2019, all apps on Google Play must include 64-bit versions of native libraries alongside 32-bit versions. Understanding 32-bit ABI issues is still important for:
+
+- Maintaining legacy code
+- Supporting older devices
+- Debugging compatibility issues
+- Ensuring correct migration to 64-bit
+
+<Warning>
+  Google Play no longer accepts apps without 64-bit support. Ensure your app includes both 32-bit and 64-bit native libraries, or exclusively 64-bit libraries.
+</Warning>
+
+## Common 32-bit ABI bugs
+
+The following issues are specific to 32-bit Android ABIs (`armeabi-v7a` and `x86`).
+
+### time_t is 32-bit
+
+On 32-bit Android, `time_t` is a 32-bit signed integer, leading to the Year 2038 problem.
+
+```c
+// On 32-bit Android
+time_t t = 0x7FFFFFFF;  // January 19, 2038
+t++;                     // Overflows to December 13, 1901!
+```
+
+**Implications:**
+- `time_t` will overflow on January 19, 2038 at 03:14:07 UTC
+- Dates after 2038 cannot be represented
+- Calculations involving future dates will fail
+
+**Solutions:**
+- Use 64-bit types for time calculations: `int64_t` or `long long`
+- Migrate to 64-bit architecture (where `time_t` is 64-bit)
+- For portable code, use C++20's `std::chrono` or custom time types
+
+```c
+// Better approach
+int64_t timestamp = time(NULL);  // Cast to 64-bit immediately
+```
+
+### off_t is 32-bit by default
+
+`off_t` (file offset type) is 32-bit by default on 32-bit Android, limiting files to 2GB.
+
+```c
+// On 32-bit Android (without _FILE_OFFSET_BITS=64)
+off_t offset = 0x7FFFFFFF;  // ~2GB max
+```
+
+**Solutions:**
+
+Define `_FILE_OFFSET_BITS=64` to use 64-bit file offsets:
+
+```c
+// In CMakeLists.txt
+target_compile_definitions(mylib PRIVATE _FILE_OFFSET_BITS=64)
+```
+
+Or use explicit 64-bit functions:
+
+```c
+// Instead of lseek()
+off64_t lseek64(int fd, off64_t offset, int whence);
+
+// Instead of fseeko()
+int fseeko64(FILE* stream, off64_t offset, int whence);
+```
+
+<Warning>
+  Always define `_FILE_OFFSET_BITS=64` when building for 32-bit targets if you handle files larger than 2GB.
+</Warning>
+
+### stat structure differences
+
+The `stat` structure has different field sizes on 32-bit vs 64-bit:
+
+```c
+struct stat {
+    mode_t st_mode;
+    off_t st_size;      // 32-bit on 32-bit Android (without _FILE_OFFSET_BITS=64)
+    time_t st_mtime;    // 32-bit on 32-bit Android
+    // ...
+};
+```
+
+This causes issues when:
+- Serializing `stat` structures
+- Passing them between 32-bit and 64-bit code
+- Storing them in files or databases
+
+**Solution:** Use `stat64` explicitly on 32-bit:
+
+```c
+#ifdef __LP64__
+    struct stat sb;
+    stat(path, &sb);
+#else
+    struct stat64 sb;
+    stat64(path, &sb);
+#endif
+```
+
+### Long double is the same as double
+
+On 32-bit ARM, `long double` is only 64 bits (same as `double`), not 80 or 128 bits as on other platforms.
+
+```c
+// On 32-bit ARM
+sizeof(double)       // 8 bytes
+sizeof(long double)  // 8 bytes (not 16!)
+```
+
+This affects numerical precision in calculations expecting extended precision.
+
+**Solution:** Be aware of precision limitations or use 64-bit architecture.
+
+### System calls use 32-bit parameters
+
+Many system calls accept 32-bit parameters on 32-bit Android:
+
+```c
+// mmap() on 32-bit
+void* mmap(void* addr, size_t len, ...);  // size_t is 32-bit
+```
+
+This limits:
+- Maximum `mmap()` size to 4GB
+- Maximum process memory to 4GB
+- Various kernel resource limits
+
+## ABI-specific considerations
+
+### armeabi-v7a (32-bit ARM)
+
+- **Removed:** `armeabi` (non-Thumb ARM) was removed in NDK r17
+- Supports NEON SIMD (check at runtime with `android_getCpuFeatures()`)
+- Requires Thumb-2 instruction set
+- Hardware floating-point support
+
+```c
+#include <cpu-features.h>
+
+if (android_getCpuFamily() == ANDROID_CPU_FAMILY_ARM) {
+    uint64_t features = android_getCpuFeatures();
+    if (features & ANDROID_CPU_ARM_FEATURE_NEON) {
+        // Use NEON-optimized code
+    }
+}
+```
+
+### x86 (32-bit Intel/AMD)
+
+- Less common than ARM on Android devices
+- Uses System V ABI calling conventions
+- SIMD via SSE (check CPU features)
+
+## Migrating to 64-bit
+
+### Why migrate?
+
+- **Required by Google Play** - Apps must support 64-bit
+- **Better performance** - More registers, improved instruction set
+- **Larger address space** - No 4GB memory limit
+- **Future-proof** - 32-bit support may be deprecated
+
+### Migration checklist
+
+<Steps>
+  <Step title="Enable 64-bit ABIs in build configuration">
+    ```groovy
+    // app/build.gradle
+    android {
+        defaultConfig {
+            ndk {
+                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            }
+        }
+    }
+    ```
+  </Step>
+  
+  <Step title="Fix type assumptions">
+    - Don't assume `int` and pointers are the same size
+    - Don't assume `long` is 32 bits (it's 64 bits on 64-bit)
+    - Use `intptr_t`, `uintptr_t` for pointer-sized integers
+    - Use `int32_t`, `int64_t` for explicit-width integers
+  </Step>
+  
+  <Step title="Update third-party libraries">
+    Ensure all native dependencies support 64-bit:
+    - Rebuild from source for 64-bit targets
+    - Update to latest versions that support 64-bit
+    - Check vendor documentation
+  </Step>
+  
+  <Step title="Test thoroughly">
+    - Test on 64-bit devices
+    - Run automated tests for both 32-bit and 64-bit builds
+    - Check for crashes related to pointer size assumptions
+  </Step>
+</Steps>
+
+### Common migration issues
+
+#### Pointer truncation
+
+```c
+// WRONG: Truncates pointers on 64-bit
+int ptr_value = (int)some_pointer;  // Loses upper 32 bits!
+
+// CORRECT: Use pointer-sized type
+intptr_t ptr_value = (intptr_t)some_pointer;
+```
+
+#### JNI type mismatches
+
+```c
+// WRONG: jlong is always 64-bit, long is 32-bit on 32-bit platforms
+jlong value = some_long_value;
+
+// CORRECT: Explicit cast
+jlong value = (jlong)some_long_value;
+```
+
+#### Structure packing differences
+
+Structure alignment and padding can differ between 32-bit and 64-bit:
+
+```c
+struct Example {
+    int32_t a;
+    void* ptr;     // 4-byte aligned on 32-bit, 8-byte on 64-bit
+    int32_t b;
+};
+
+// Size: 12 bytes on 32-bit, 24 bytes on 64-bit
+```
+
+**Solution:** Use `__attribute__((packed))` or explicit padding if binary compatibility is required.
+
+## Testing 32-bit and 64-bit builds
+
+### Run both ABIs
+
+Test your app on both 32-bit and 64-bit devices:
+
+```bash
+# Install 32-bit version
+adb install --abi armeabi-v7a app.apk
+
+# Install 64-bit version
+adb install --abi arm64-v8a app.apk
+```
+
+### Check installed ABI
+
+```bash
+adb shell pm dump <package> | grep primaryCpuAbi
+```
+
+### Force 32-bit on 64-bit device
+
+For testing, you can force 32-bit mode:
+
+```bash
+adb install --abi armeabi-v7a app.apk
+```
+
+<Warning>
+  Even if you only support 64-bit, test that your app gracefully handles 32-bit scenarios if fallback occurs.
+</Warning>
+
+## Performance considerations
+
+### Memory usage
+
+64-bit apps use more memory due to:
+- Larger pointers (8 bytes vs 4 bytes)
+- Increased structure padding
+- Larger code size
+
+Typical increase: 10-30% more memory usage.
+
+### Performance improvements
+
+64-bit offers:
+- More CPU registers (32 vs 16 on ARM)
+- Better instruction set (ARMv8 vs ARMv7)
+- Hardware crypto acceleration
+- Improved SIMD capabilities
+
+Typical performance gain: 10-30% for compute-intensive tasks.
+
+## Additional resources
+
+- [32-bit ABI bugs documentation](https://android.googlesource.com/platform/bionic/+/master/docs/32-bit-abi.md) - Complete reference from AOSP
+- [Bionic status documentation](https://android.googlesource.com/platform/bionic/+/master/docs/status.md) - API differences between Android versions

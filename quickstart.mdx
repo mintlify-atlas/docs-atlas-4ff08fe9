@@ -1,80 +1,428 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start guide
+description: Build your first Android application with native code using the NDK
 ---
 
-## Get started in three steps
+# Quick start guide
 
-Get your documentation site running locally and make your first customization.
+This tutorial guides you through creating your first Android application with native C++ code. You'll build a simple "Hello from C++" app that demonstrates how Java/Kotlin code interacts with native code through JNI (Java Native Interface).
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+Before starting, ensure you have:
+
+- **Android Studio** installed with NDK and CMake
+- **Basic knowledge** of Android app development
+- **Basic C++ knowledge** (helpful but not required)
+
+If you haven't installed the NDK yet, see the [installation guide](/installation).
+
+## Create your first native app
+
+<Steps>
+  <Step title="Create a new project with native support">
+    Open Android Studio and create a new project:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    1. Click **File > New > New Project**
+    2. Select **Native C++** template
+    3. Click **Next**
+    4. Configure your project:
+       - **Name**: HelloNDK
+       - **Package name**: com.example.hellondk
+       - **Language**: Kotlin (or Java)
+       - **Minimum SDK**: API 21 or higher
+    5. Click **Next**
+    6. Choose **C++ Standard**: C++14 or higher
+    7. Click **Finish**
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    Android Studio creates a project with native code support pre-configured.
+  </Step>
+  
+  <Step title="Explore the project structure">
+    Your project now contains both Java/Kotlin and C++ code:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```
+    app/
+    ├── src/
+    │   ├── main/
+    │   │   ├── java/          # Java/Kotlin code
+    │   │   ├── cpp/           # C++ native code
+    │   │   │   ├── native-lib.cpp
+    │   │   │   └── CMakeLists.txt
+    │   │   └── AndroidManifest.xml
+    └── build.gradle
+    ```
+    
+    Key files:
+    - `native-lib.cpp`: Your C++ source code
+    - `CMakeLists.txt`: CMake build configuration
+    - `MainActivity.kt/java`: Loads and calls native code
+  </Step>
+  
+  <Step title="Examine the native code">
+    Open `app/src/main/cpp/native-lib.cpp`. You'll see a JNI function:
+    
+    ```cpp
+    #include <jni.h>
+    #include <string>
+    
+    extern "C" JNIEXPORT jstring JNICALL
+    Java_com_example_hellondk_MainActivity_stringFromJNI(
+            JNIEnv* env,
+            jobject /* this */) {
+        std::string hello = "Hello from C++";
+        return env->NewStringUTF(hello.c_str());
+    }
+    ```
+    
+    This function:
+    - Is called from Java/Kotlin code
+    - Returns a string created in C++
+    - Uses JNI to convert C++ string to Java string
+    
+    <Note>
+      The function name follows JNI naming convention: `Java_<package>_<class>_<method>`
+    </Note>
+  </Step>
+  
+  <Step title="Examine the CMake configuration">
+    Open `app/src/main/cpp/CMakeLists.txt`:
+    
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.1)
+    
+    project("hellondk")
+    
+    add_library(
+        native-lib
+        SHARED
+        native-lib.cpp
+    )
+    
+    find_library(
+        log-lib
+        log
+    )
+    
+    target_link_libraries(
+        native-lib
+        ${log-lib}
+    )
+    ```
+    
+    This configuration:
+    - Creates a shared library named `native-lib`
+    - Compiles `native-lib.cpp`
+    - Links the Android log library
+  </Step>
+  
+  <Step title="Examine the Kotlin/Java code">
+    Open `MainActivity.kt` (or `MainActivity.java`):
+    
+    <CodeGroup>
+    ```kotlin Kotlin
+    class MainActivity : AppCompatActivity() {
+        override fun onCreate(savedInstanceState: Bundle?) {
+            super.onCreate(savedInstanceState)
+            setContentView(R.layout.activity_main)
+            
+            // Load the native library
+            System.loadLibrary("native-lib")
+            
+            // Call the native method
+            val textView: TextView = findViewById(R.id.sample_text)
+            textView.text = stringFromJNI()
+        }
+        
+        // Declare the native method
+        external fun stringFromJNI(): String
+    }
+    ```
+    
+    ```java Java
+    public class MainActivity extends AppCompatActivity {
+        static {
+            System.loadLibrary("native-lib");
+        }
+        
+        @Override
+        protected void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            setContentView(R.layout.activity_main);
+            
+            TextView tv = findViewById(R.id.sample_text);
+            tv.setText(stringFromJNI());
+        }
+        
+        public native String stringFromJNI();
+    }
+    ```
+    </CodeGroup>
+    
+    The code:
+    - Loads the native library with `System.loadLibrary()`
+    - Declares the native method with `external` (Kotlin) or `native` (Java)
+    - Calls the C++ function like any other method
+  </Step>
+  
+  <Step title="Build and run the app">
+    1. Connect an Android device or start an emulator
+    2. Click **Run** (green play button) or press **Shift+F10**
+    3. Wait for the build to complete
+    4. The app displays "Hello from C++" on the screen
+    
+    <Note>
+      The first build may take longer as CMake compiles the native code for multiple architectures (armeabi-v7a, arm64-v8a, x86, x86_64).
+    </Note>
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Customize your native code
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Now let's modify the native code to perform a simple calculation.
 
-### Step 3: Go live
+<Steps>
+  <Step title="Add a new native function">
+    In `native-lib.cpp`, add a new function that adds two numbers:
+    
+    ```cpp
+    extern "C" JNIEXPORT jint JNICALL
+    Java_com_example_hellondk_MainActivity_addNumbers(
+            JNIEnv* env,
+            jobject /* this */,
+            jint a,
+            jint b) {
+        return a + b;
+    }
+    ```
+    
+    This function:
+    - Takes two integers as parameters
+    - Returns their sum
+    - Uses `jint` (JNI integer type)
+  </Step>
+  
+  <Step title="Declare the method in Kotlin/Java">
+    In `MainActivity.kt`, add the method declaration:
+    
+    <CodeGroup>
+    ```kotlin Kotlin
+    external fun addNumbers(a: Int, b: Int): Int
+    ```
+    
+    ```java Java
+    public native int addNumbers(int a, int b);
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Call the native function">
+    Update `onCreate` to call the new function:
+    
+    <CodeGroup>
+    ```kotlin Kotlin
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        
+        val textView: TextView = findViewById(R.id.sample_text)
+        val greeting = stringFromJNI()
+        val sum = addNumbers(15, 27)
+        textView.text = "$greeting\nSum: $sum"
+    }
+    ```
+    
+    ```java Java
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        
+        TextView tv = findViewById(R.id.sample_text);
+        String greeting = stringFromJNI();
+        int sum = addNumbers(15, 27);
+        tv.setText(greeting + "\nSum: " + sum);
+    }
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Build and run again">
+    Run the app again. You should now see:
+    ```
+    Hello from C++
+    Sum: 42
+    ```
+  </Step>
+</Steps>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+## Add logging from native code
+
+Logging is essential for debugging native code. Let's add Android logging support.
+
+<Steps>
+  <Step title="Include the log header">
+    In `native-lib.cpp`, add the Android log header:
+    
+    ```cpp
+    #include <jni.h>
+    #include <string>
+    #include <android/log.h>
+    
+    #define TAG "NativeLib"
+    #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+    #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+    #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+    ```
+  </Step>
+  
+  <Step title="Add logging to your function">
+    Update the `addNumbers` function:
+    
+    ```cpp
+    extern "C" JNIEXPORT jint JNICALL
+    Java_com_example_hellondk_MainActivity_addNumbers(
+            JNIEnv* env,
+            jobject /* this */,
+            jint a,
+            jint b) {
+        LOGI("Adding %d + %d", a, b);
+        jint result = a + b;
+        LOGI("Result: %d", result);
+        return result;
+    }
+    ```
+  </Step>
+  
+  <Step title="View logs">
+    Run the app and check Logcat in Android Studio:
+    
+    1. Open **Logcat** tab at the bottom
+    2. Filter by "NativeLib"
+    3. You'll see the log messages from C++:
+    
+    ```
+    I/NativeLib: Adding 15 + 27
+    I/NativeLib: Result: 42
+    ```
+  </Step>
+</Steps>
+
+## Understanding JNI types
+
+When working with JNI, you need to understand type mappings between Java and C++:
+
+| Java Type | JNI Type | C++ Type |
+|-----------|----------|----------|
+| boolean   | jboolean | uint8_t  |
+| byte      | jbyte    | int8_t   |
+| char      | jchar    | uint16_t |
+| short     | jshort   | int16_t  |
+| int       | jint     | int32_t  |
+| long      | jlong    | int64_t  |
+| float     | jfloat   | float    |
+| double    | jdouble  | double   |
+| Object    | jobject  | -        |
+| String    | jstring  | -        |
+
+<Warning>
+  Always use JNI types in your native function signatures. Using regular C++ types will cause runtime errors.
+</Warning>
+
+## Build system configuration
+
+The `build.gradle` file contains NDK configuration:
+
+```groovy
+android {
+    defaultConfig {
+        // Specify which ABIs to build
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+    
+    // Link CMake build script
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.18.1"
+        }
+    }
+}
+```
+
+<Note>
+  Building for fewer ABIs reduces APK size but limits device compatibility. Most production apps target `armeabi-v7a` and `arm64-v8a`.
+</Note>
+
+## Debugging native code
+
+Android Studio provides full debugging support for native code:
+
+<Steps>
+  <Step title="Set breakpoints">
+    Open `native-lib.cpp` and click in the left gutter to set a breakpoint.
+  </Step>
+  
+  <Step title="Debug the app">
+    Click **Debug** (bug icon) instead of Run. The debugger will pause at your breakpoint.
+  </Step>
+  
+  <Step title="Inspect variables">
+    Use the **Variables** pane to inspect values, step through code, and evaluate expressions.
+  </Step>
+</Steps>
+
+## Common issues and solutions
+
+### UnsatisfiedLinkError
+
+If you see `UnsatisfiedLinkError: No implementation found`:
+
+- Verify the native function name matches the JNI naming convention
+- Ensure `System.loadLibrary()` is called before the native method
+- Check that CMakeLists.txt includes your .cpp file
+
+### Build errors
+
+If the native build fails:
+
+- Check **Build** tab for CMake error messages
+- Ensure NDK and CMake are installed via SDK Manager
+- Verify CMake version in CMakeLists.txt matches installed version
+
+### Missing symbols
+
+If you get linker errors about missing symbols:
+
+- Add required libraries to `target_link_libraries` in CMakeLists.txt
+- For Android APIs, use `find_library()` to locate system libraries
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Congratulations! You've built your first native Android application. Here's what to explore next:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Build systems" icon="hammer" href="/build/overview">
+    Learn advanced CMake and ndk-build configurations
+  </Card>
+  
+  <Card title="JNI guide" icon="link" href="/concepts/jni-overview">
+    Deep dive into Java Native Interface programming
+  </Card>
+  
+  <Card title="Performance" icon="gauge-high" href="/guides/profiling">
+    Optimize your native code for maximum performance
+  </Card>
+  
+  <Card title="Debugging" icon="bug" href="/guides/debugging">
+    Master native debugging and crash analysis
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Additional resources
+
+- [NDK API Reference](https://developer.android.com/ndk/reference) - Complete native API documentation
+- [NDK Guides](https://developer.android.com/ndk/guides/) - Comprehensive development guides
+- [Android NDK Google Group](http://groups.google.com/group/android-ndk) - Community support
+- [GitHub Issues](https://github.com/android-ndk/ndk/issues) - Report bugs and request features

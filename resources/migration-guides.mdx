@@ -1,0 +1,200 @@
+---
+title: Migration guides
+description: Guides for migrating between NDK versions, understanding breaking changes, and planning upgrade paths
+---
+
+Upgrading to a new NDK version may require changes to your build configuration, code, or dependencies. This page provides guidance for migrating between NDK versions.
+
+## Before you upgrade
+
+Before upgrading your NDK version:
+
+1. **Review the changelog** - Check the [changelog](/resources/changelog) for the target version to understand what has changed
+2. **Check for breaking changes** - Look for any breaking changes that might affect your application
+3. **Test in a development environment** - Never upgrade directly in production
+4. **Verify supported versions** - Ensure the target version is [currently supported](/resources/releases)
+
+<Warning>
+  Always test your application thoroughly with the new NDK version before deploying to production. Some toolchain changes may affect code generation or runtime behavior.
+</Warning>
+
+## General upgrade process
+
+### For Android Gradle Plugin projects
+
+1. Update the `android.ndkVersion` property in your `build.gradle` or `build.gradle.kts` file:
+
+   ```groovy
+   android {
+       ndkVersion "29.0.0"  // Update to your target version
+   }
+   ```
+
+2. Sync your project with Gradle files
+3. Clean and rebuild your project
+4. Run your test suite to verify functionality
+
+### For standalone NDK installations
+
+1. Download the new NDK version from the [official downloads page](https://github.com/android-ndk/ndk/wiki#downloads)
+2. Extract the NDK to your desired location
+3. Update your environment variables or IDE settings to point to the new NDK location
+4. Clean and rebuild your project
+5. Run your test suite to verify functionality
+
+## Version-specific migration guides
+
+<Accordion title="Migrating to NDK r29">
+  ### Key changes in r29
+
+  For detailed information about changes in NDK r29, refer to the [official release notes](https://github.com/android-ndk/ndk/wiki).
+
+  ### Common migration tasks
+
+  - Review toolchain version changes and compiler warnings
+  - Check for new API availability if targeting newer Android versions
+  - Update build scripts if using deprecated features
+  - Test thoroughly on all target ABIs
+
+  ### Breaking changes
+
+  Consult the official changelog for any breaking changes in this release.
+</Accordion>
+
+<Accordion title="Migrating to NDK r28">
+  ### Key changes in r28
+
+  For detailed information about changes in NDK r28, refer to the [official release notes](https://github.com/android-ndk/ndk/wiki).
+
+  ### Common migration tasks
+
+  - Review toolchain version changes and compiler warnings
+  - Check for new API availability if targeting newer Android versions
+  - Update build scripts if using deprecated features
+  - Test thoroughly on all target ABIs
+
+  ### Breaking changes
+
+  Consult the official changelog for any breaking changes in this release.
+</Accordion>
+
+<Accordion title="Migrating to NDK r27">
+  ### Key changes in r27
+
+  For detailed information about changes in NDK r27, refer to the [official release notes](https://github.com/android-ndk/ndk/wiki).
+
+  ### Common migration tasks
+
+  - Review toolchain version changes and compiler warnings
+  - Check for new API availability if targeting newer Android versions
+  - Update build scripts if using deprecated features
+  - Test thoroughly on all target ABIs
+
+  ### Breaking changes
+
+  Consult the official changelog for any breaking changes in this release.
+</Accordion>
+
+## Handling breaking changes
+
+<Warning>
+  Breaking changes may require code modifications. Common sources of breaking changes include:
+
+  - Toolchain updates (newer Clang/LLVM versions with stricter checks)
+  - Deprecated feature removal
+  - Changes to default compiler flags or behavior
+  - ABI changes or removals
+</Warning>
+
+### Toolchain changes
+
+Newer versions of Clang/LLVM may:
+
+- Introduce new warnings or errors for previously accepted code
+- Change optimization behavior
+- Add new sanitizers or security features
+
+To handle toolchain changes:
+
+1. Review compiler warnings carefully
+2. Update code to address legitimate issues
+3. Use compiler flags to suppress false positives (as a last resort)
+
+### Dynamic linker changes
+
+Changes to Android's dynamic linker can affect how shared libraries are loaded. For detailed information, see:
+
+- [Android changes for NDK developers](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md)
+
+Common issues include:
+
+- Missing symbol errors
+- Library loading failures
+- Changed behavior for `dlopen()`
+
+### API level changes
+
+When upgrading the NDK, you may want to target newer Android API levels. Check:
+
+- [Android bionic status](https://android.googlesource.com/platform/bionic/+/master/docs/status.md) - API availability by Android version
+- [NDK API Reference](https://developer.android.com/ndk/reference) - Complete API documentation
+
+## Upgrade paths
+
+### Skipping versions
+
+If you're upgrading from an older NDK to a much newer version (e.g., r25 to r29):
+
+1. Review the changelogs for all intermediate versions
+2. Pay special attention to deprecated features that have been removed
+3. Consider upgrading incrementally if you encounter issues
+
+### Rollback strategy
+
+Always maintain the ability to rollback:
+
+- Keep your previous NDK installation until the upgrade is verified
+- Use version control to track changes
+- Document any build configuration changes
+
+## Common migration issues
+
+### Build failures
+
+If your build fails after upgrading:
+
+1. Check the [common problems](https://android.googlesource.com/platform/ndk/+/master/docs/user/common_problems.md) page
+2. Review compiler errors and warnings
+3. Verify that all dependencies are compatible with the new NDK
+
+### Runtime issues
+
+If your application crashes or behaves incorrectly after upgrading:
+
+1. Check for ABI compatibility issues
+2. Review [crash dumps and tombstones](https://source.android.com/devices/tech/debug)
+3. Use debugging tools to identify the root cause
+
+### Performance regressions
+
+If you notice performance changes:
+
+1. Profile your application with both NDK versions
+2. Review toolchain optimization changes
+3. Check for unintended behavior changes in your code
+
+## Getting help
+
+If you encounter issues during migration:
+
+- Check the [NDK wiki](https://github.com/android-ndk/ndk/wiki) for release-specific guidance
+- Review the [common problems](https://android.googlesource.com/platform/ndk/+/master/docs/user/common_problems.md) page
+- Ask questions on the [android-ndk Google Group](http://groups.google.com/group/android-ndk)
+- File bugs at [github.com/android-ndk/ndk/issues](https://github.com/android-ndk/ndk/issues)
+
+## Related resources
+
+- [NDK releases](/resources/releases) - Supported versions and download information
+- [Changelog](/resources/changelog) - Detailed changes in each release
+- [NDK Roadmap](https://android.googlesource.com/platform/ndk/+/master/docs/Roadmap.md) - Future NDK direction
+- [Build System Maintainers Guide](https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md) - For custom build system integration

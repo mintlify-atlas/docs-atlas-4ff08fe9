@@ -1,0 +1,563 @@
+---
+title: "Common problems"
+description: "Frequently encountered NDK issues and their solutions"
+---
+
+This page covers common problems NDK developers encounter and provides practical solutions. Many of these issues have straightforward fixes once you understand the underlying cause.
+
+## Build issues
+
+<AccordionGroup>
+  <Accordion title="UnsatisfiedLinkError: dlopen failed: library not found">
+    This error occurs when the dynamic linker cannot find a required shared library.
+
+    **Common causes:**
+    - Library not packaged in the APK
+    - ABI mismatch (e.g., loading arm64-v8a library on armeabi-v7a device)
+    - Incorrect library name
+    - Missing dependencies
+
+    **Solutions:**
+
+    1. Verify the library exists in your APK:
+    ```bash
+    unzip -l app.apk | grep \.so
+    ```
+
+    2. Check that you're building for the correct ABIs:
+    ```groovy
+    // app/build.gradle
+    android {
+        defaultConfig {
+            ndk {
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
+            }
+        }
+    }
+    ```
+
+    3. Ensure library name matches exactly:
+    ```java
+    // If your library is libexample.so
+    System.loadLibrary("example");  // Correct
+    System.loadLibrary("libexample");  // WRONG
+    ```
+
+    4. Check for missing dependencies:
+    ```bash
+    readelf -d libexample.so | grep NEEDED
+    ```
+  </Accordion>
+
+  <Accordion title="UnsatisfiedLinkError: No implementation found for native method">
+    The JNI method signature in your C/C++ code doesn't match the Java declaration.
+
+    **Common causes:**
+    - Incorrect function name
+    - Wrong package or class name in JNI function
+    - Missing `extern "C"` in C++
+    - Method not registered
+
+    **Solutions:**
+
+    1. Generate the correct signature:
+    ```bash
+    javah -classpath . com.example.MyClass
+    ```
+
+    2. Verify your JNI function name:
+    ```java
+    // Java
+    package com.example;
+    class MyClass {
+        native int calculate(int x);
+    }
+    ```
+
+    ```c
+    // C/C++ - function name must match exactly
+    JNIEXPORT jint JNICALL
+    Java_com_example_MyClass_calculate(JNIEnv* env, jobject obj, jint x) {
+        return x * 2;
+    }
+    ```
+
+    3. Use `extern "C"` for C++ code:
+    ```cpp
+    extern "C" {
+        JNIEXPORT jint JNICALL
+        Java_com_example_MyClass_calculate(JNIEnv* env, jobject obj, jint x);
+    }
+    ```
+
+    4. Alternative: Use dynamic registration:
+    ```cpp
+    static JNINativeMethod methods[] = {
+        {"calculate", "(I)I", (void*)calculate_impl}
+    };
+
+    JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+        JNIEnv* env;
+        vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        
+        jclass clazz = env->FindClass("com/example/MyClass");
+        env->RegisterNatives(clazz, methods, 1);
+        
+        return JNI_VERSION_1_6;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Build fails with 'text relocations' error">
+    Text relocations are not allowed on Android 6.0+ (API level 23) for security reasons.
+
+    **Error message:**
+    ```
+    TEXTREL error: requires text relocations
+    ```
+
+    **Cause:**
+    Code was not compiled as position-independent code (PIC).
+
+    **Solution:**
+
+    Ensure you're using `-fPIC` flag:
+
+    ```cmake
+    # CMakeLists.txt
+    add_library(mylib SHARED src/mylib.cpp)
+    target_compile_options(mylib PRIVATE -fPIC)
+    ```
+
+    Or check your existing libraries:
+    ```bash
+    readelf -d libexample.so | grep TEXTREL
+    ```
+
+    If third-party libraries have text relocations, contact the vendor for an updated version.
+  </Accordion>
+
+  <Accordion title="Undefined reference to symbol">
+    The linker cannot find the implementation of a function or variable.
+
+    **Common causes:**
+    - Missing library in link command
+    - Wrong link order
+    - Symbol not exported
+    - C++ name mangling issues
+
+    **Solutions:**
+
+    1. Add the required library:
+    ```cmake
+    target_link_libraries(mylib
+        android
+        log
+        # Add missing library
+    )
+    ```
+
+    2. Check symbol availability:
+    ```bash
+    nm -D libexample.so | grep symbol_name
+    ```
+
+    3. Fix C++ name mangling:
+    ```cpp
+    // If calling C library from C++
+    extern "C" {
+        #include "c_library.h"
+    }
+    ```
+
+    4. Check symbol visibility:
+    ```cpp
+    // Ensure symbol is exported
+    __attribute__((visibility("default")))
+    int my_function() {
+        return 42;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="CMake cannot find Android NDK">
+    CMake can't locate your NDK installation.
+
+    **Solutions:**
+
+    1. Set `ANDROID_NDK` environment variable:
+    ```bash
+    export ANDROID_NDK=/path/to/ndk
+    ```
+
+    2. Specify in CMake command:
+    ```bash
+    cmake -DANDROID_NDK=/path/to/ndk ...
+    ```
+
+    3. Use Android Gradle Plugin (recommended):
+    ```groovy
+    // app/build.gradle
+    android {
+        ndkVersion "26.1.10909125"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Runtime issues
+
+<AccordionGroup>
+  <Accordion title="Crashes with SIGSEGV (segmentation fault)">
+    The most common native crash. Your code accessed invalid memory.
+
+    **Common causes:**
+    - Null pointer dereference
+    - Use after free
+    - Buffer overflow
+    - Stack overflow
+    - Invalid JNI reference
+
+    **Debugging:**
+
+    1. Get the tombstone (see [Understanding crashes](/advanced/crashes))
+
+    2. Use Address Sanitizer:
+    ```cmake
+    target_compile_options(mylib PRIVATE -fsanitize=address)
+    target_link_options(mylib PRIVATE -fsanitize=address)
+    ```
+
+    3. Check JNI usage:
+    ```bash
+    adb shell setprop debug.checkjni 1
+    ```
+
+    4. Use Android Studio's native debugger
+  </Accordion>
+
+  <Accordion title="Crashes with SIGABRT (abort)">
+    Your code or a library called `abort()`, often due to assertion failures or critical errors.
+
+    **Common causes:**
+    - Failed assertion (`assert()` or `CHECK()`)
+    - Memory allocation failure
+    - Fatal error in C++ standard library
+    - Stack smashing detected
+
+    **Debugging:**
+
+    Check the tombstone for the abort message:
+    ```
+    Abort message: 'assertion failed: x > 0'
+    ```
+
+    Look at the stack trace to identify the failing assertion or error.
+  </Accordion>
+
+  <Accordion title="Memory leaks in native code">
+    Native memory is not garbage collected. You must manually free allocated memory.
+
+    **Detection:**
+
+    Use Address Sanitizer with leak detection:
+    ```cmake
+    target_compile_options(mylib PRIVATE 
+        -fsanitize=address 
+        -fsanitize=leak
+    )
+    target_link_options(mylib PRIVATE 
+        -fsanitize=address 
+        -fsanitize=leak
+    )
+    ```
+
+    **Common leak patterns:**
+
+    1. Missing `free()` or `delete`:
+    ```cpp
+    // WRONG
+    void leak() {
+        char* buffer = new char[1024];
+        // ... use buffer ...
+        // Missing: delete[] buffer;
+    }
+
+    // CORRECT
+    void no_leak() {
+        char* buffer = new char[1024];
+        // ... use buffer ...
+        delete[] buffer;
+    }
+    ```
+
+    2. JNI reference leaks:
+    ```cpp
+    // WRONG
+    void leak(JNIEnv* env) {
+        jstring str = env->NewStringUTF("hello");
+        // Missing: env->DeleteLocalRef(str);
+    }
+
+    // CORRECT
+    void no_leak(JNIEnv* env) {
+        jstring str = env->NewStringUTF("hello");
+        // ... use str ...
+        env->DeleteLocalRef(str);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="JNI local reference table overflow">
+    You've created too many JNI local references without deleting them.
+
+    **Error:**
+    ```
+    JNI ERROR: local reference table overflow (max=512)
+    ```
+
+    **Solution:**
+
+    1. Delete local references when done:
+    ```cpp
+    void process_array(JNIEnv* env, jobjectArray arr) {
+        int len = env->GetArrayLength(arr);
+        for (int i = 0; i < len; i++) {
+            jobject obj = env->GetObjectArrayElement(arr, i);
+            // ... process obj ...
+            env->DeleteLocalRef(obj);  // IMPORTANT!
+        }
+    }
+    ```
+
+    2. Use `PushLocalFrame`/`PopLocalFrame` for bulk cleanup:
+    ```cpp
+    void process_many(JNIEnv* env) {
+        env->PushLocalFrame(100);  // Reserve space for 100 refs
+        
+        // Create many local references
+        for (int i = 0; i < 100; i++) {
+            jstring str = env->NewStringUTF("test");
+            // ... use str ...
+        }
+        
+        env->PopLocalFrame(NULL);  // Delete all at once
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Threading issues and race conditions">
+    Multiple threads accessing shared data without synchronization.
+
+    **Detection:**
+
+    Use Thread Sanitizer:
+    ```cmake
+    target_compile_options(mylib PRIVATE -fsanitize=thread)
+    target_link_options(mylib PRIVATE -fsanitize=thread)
+    ```
+
+    **Solutions:**
+
+    1. Use mutexes:
+    ```cpp
+    #include <mutex>
+
+    std::mutex g_mutex;
+    int g_counter = 0;
+
+    void increment() {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_counter++;
+    }
+    ```
+
+    2. Use atomic operations:
+    ```cpp
+    #include <atomic>
+
+    std::atomic<int> g_counter(0);
+
+    void increment() {
+        g_counter++;  // Thread-safe
+    }
+    ```
+
+    3. Remember: Each thread needs its own `JNIEnv*`:
+    ```cpp
+    // WRONG: Sharing JNIEnv* across threads
+    JNIEnv* g_env;  // DON'T DO THIS
+
+    // CORRECT: Get JNIEnv* for each thread
+    void thread_function(JavaVM* vm) {
+        JNIEnv* env;
+        vm->AttachCurrentThread(&env, NULL);
+        // ... use env ...
+        vm->DetachCurrentThread();
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Platform-specific issues
+
+<AccordionGroup>
+  <Accordion title="Works on emulator but crashes on device">
+    The emulator and physical devices can have different characteristics.
+
+    **Common causes:**
+    - ABI mismatch (emulator is x86, device is ARM)
+    - Uninitialized memory (different initial values)
+    - Timing issues (emulator is slower)
+    - Hardware features (NEON, SSE)
+
+    **Solutions:**
+
+    1. Test on actual hardware early
+    2. Use sanitizers to catch undefined behavior
+    3. Check CPU features before using SIMD:
+    ```cpp
+    #include <cpu-features.h>
+    
+    if (android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON) {
+        // Use NEON code
+    } else {
+        // Use fallback
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Different behavior on different Android versions">
+    Android's C library (bionic) and system behavior evolve over time.
+
+    **Solutions:**
+
+    1. Check API level at runtime:
+    ```cpp
+    #include <android/api-level.h>
+    
+    int api_level = android_get_device_api_level();
+    if (api_level >= 29) {
+        // Use Android 10+ features
+    }
+    ```
+
+    2. Review [Android changes for NDK developers](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md)
+
+    3. Test on multiple Android versions
+  </Accordion>
+
+  <Accordion title="App works on 32-bit but fails on 64-bit">
+    Type size assumptions or ABI issues.
+
+    **Common causes:**
+    - Assuming `int` and pointers are same size
+    - Assuming `long` is 32 bits
+    - Structure packing differences
+    - Inline assembly for wrong architecture
+
+    **Solutions:**
+
+    See [32-bit ABI issues](/advanced/32bit-abi) for detailed migration guide.
+
+    Quick fixes:
+    ```cpp
+    // Use fixed-width types
+    int32_t x;  // Always 32 bits
+    int64_t y;  // Always 64 bits
+    intptr_t p; // Pointer-sized integer
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance issues
+
+<AccordionGroup>
+  <Accordion title="Slow JNI calls">
+    Frequent JNI calls have overhead.
+
+    **Solutions:**
+
+    1. Batch operations:
+    ```java
+    // SLOW: Many JNI calls
+    for (int i = 0; i < 1000; i++) {
+        nativeProcess(i);
+    }
+
+    // FAST: One JNI call
+    nativeProcessBatch(array, 1000);
+    ```
+
+    2. Cache JNI method IDs and field IDs:
+    ```cpp
+    // Cache in JNI_OnLoad
+    jmethodID g_method_id;
+
+    JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+        JNIEnv* env;
+        vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        
+        jclass clazz = env->FindClass("com/example/MyClass");
+        g_method_id = env->GetMethodID(clazz, "callback", "(I)V");
+        
+        return JNI_VERSION_1_6;
+    }
+    ```
+
+    3. Use direct buffer access:
+    ```cpp
+    void* data = env->GetDirectBufferAddress(buffer);
+    jlong size = env->GetDirectBufferCapacity(buffer);
+    // Process directly without copying
+    ```
+  </Accordion>
+
+  <Accordion title="Excessive memory usage">
+    Native code uses too much memory.
+
+    **Solutions:**
+
+    1. Use tools to analyze:
+    ```bash
+    # Memory profiler in Android Studio
+    # or command line:
+    adb shell dumpsys meminfo <package>
+    ```
+
+    2. Reuse buffers:
+    ```cpp
+    // WASTEFUL: Allocate every call
+    void process() {
+        std::vector<char> buffer(LARGE_SIZE);
+        // ...
+    }
+
+    // BETTER: Reuse buffer
+    std::vector<char> g_buffer;
+    void process() {
+        if (g_buffer.size() < LARGE_SIZE) {
+            g_buffer.resize(LARGE_SIZE);
+        }
+        // ...
+    }
+    ```
+
+    3. Free large allocations promptly
+    4. Consider memory mapping for large files
+  </Accordion>
+</AccordionGroup>
+
+## Getting help
+
+If you're still stuck:
+
+1. Check tombstone files (see [Understanding crashes](/advanced/crashes))
+2. Enable detailed logging
+3. Search [android-ndk GitHub issues](https://github.com/android-ndk/ndk/issues)
+4. Ask on [android-ndk Google Group](http://groups.google.com/group/android-ndk)
+5. Review [bionic documentation](https://android.googlesource.com/platform/bionic/+/master/docs/)
+
+<Warning>
+  Always include your NDK version, target API level, device/emulator info, and complete error messages when asking for help.
+</Warning>

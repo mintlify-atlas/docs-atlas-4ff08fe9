@@ -1,0 +1,261 @@
+---
+title: "Dynamic linker"
+description: "Understanding Android's dynamic linker, loading shared libraries, and resolving symbols"
+---
+
+The Android dynamic linker (`linker` for 32-bit, `linker64` for 64-bit) is responsible for loading shared libraries (`.so` files) and resolving symbols at runtime. Understanding how it works is essential for debugging loading issues and optimizing your native code.
+
+## How the dynamic linker works
+
+When your application loads a native library, the dynamic linker:
+
+1. **Locates the library** - Searches for the `.so` file in the application's library path
+2. **Loads dependencies** - Recursively loads any libraries marked as `NEEDED` in the ELF header
+3. **Resolves symbols** - Maps function and variable references to their implementations
+4. **Executes initialization** - Runs any constructors and initialization functions
+
+### Library search paths
+
+The dynamic linker searches for libraries in this order:
+
+1. `DT_RUNPATH` or `DT_RPATH` (if set in the ELF file)
+2. `LD_LIBRARY_PATH` environment variable (not available for normal apps)
+3. The application's native library directory (e.g., `/data/app/<package>/lib/arm64`)
+4. System library directories (`/system/lib64`, `/vendor/lib64`)
+
+<Warning>
+  Never rely on `LD_LIBRARY_PATH` for production apps. This variable is not available to normal applications for security reasons.
+</Warning>
+
+## Loading shared libraries
+
+### Static dependencies (NEEDED entries)
+
+Libraries can declare static dependencies using `NEEDED` entries in their ELF header. These are automatically loaded when the parent library loads:
+
+```bash
+# View NEEDED entries
+readelf -d libexample.so | grep NEEDED
+```
+
+Output example:
+```
+0x0000000000000001 (NEEDED)             Shared library: [liblog.so]
+0x0000000000000001 (NEEDED)             Shared library: [libc.so]
+0x0000000000000001 (NEEDED)             Shared library: [libm.so]
+0x0000000000000001 (NEEDED)             Shared library: [libdl.so]
+```
+
+<Warning>
+  Each `NEEDED` entry increases load time. Only link against libraries you actually use. Use `--as-needed` linker flag to strip unnecessary dependencies.
+</Warning>
+
+### Dynamic loading with dlopen()
+
+You can load libraries at runtime using `dlopen()`:
+
+```c
+#include <dlfcn.h>
+
+void* handle = dlopen("libexample.so", RTLD_NOW | RTLD_LOCAL);
+if (!handle) {
+    __android_log_print(ANDROID_LOG_ERROR, "MyApp", 
+                        "dlopen failed: %s", dlerror());
+    return;
+}
+
+// Look up a symbol
+typedef int (*example_func_t)(int);
+example_func_t func = (example_func_t)dlsym(handle, "example_function");
+if (!func) {
+    __android_log_print(ANDROID_LOG_ERROR, "MyApp", 
+                        "dlsym failed: %s", dlerror());
+    dlclose(handle);
+    return;
+}
+
+int result = func(42);
+
+// Clean up
+dlclose(handle);
+```
+
+#### dlopen() flags
+
+- `RTLD_NOW` - Resolve all symbols immediately (recommended)
+- `RTLD_LAZY` - Defer symbol resolution until needed (can cause crashes later)
+- `RTLD_LOCAL` - Don't make symbols available to subsequently loaded libraries
+- `RTLD_GLOBAL` - Make symbols available globally (use carefully)
+
+<Warning>
+  Always use `RTLD_NOW` instead of `RTLD_LAZY`. Lazy loading can cause hard-to-debug crashes when symbols are accessed.
+</Warning>
+
+## Symbol resolution and visibility
+
+### Symbol visibility
+
+Control which symbols are exported from your library:
+
+```c
+// Export a symbol
+__attribute__((visibility("default")))
+int public_function(int x) {
+    return x * 2;
+}
+
+// Hide a symbol
+__attribute__((visibility("hidden")))
+int internal_function(int x) {
+    return x + 1;
+}
+```
+
+Or use a version script to control visibility:
+
+```text
+# version_script.txt
+{
+  global:
+    public_function;
+    JNI_OnLoad;
+  local:
+    *;
+};
+```
+
+Link with: `-Wl,--version-script=version_script.txt`
+
+### Symbol interposition
+
+When multiple libraries export the same symbol, the first one loaded wins. This can cause unexpected behavior:
+
+```c
+// libA.so exports foo()
+int foo() { return 1; }
+
+// libB.so also exports foo()
+int foo() { return 2; }
+
+// Which foo() gets called depends on load order!
+```
+
+Use namespaces or static linking to avoid symbol conflicts.
+
+## Linker namespaces
+
+Starting with Android 7.0 (API level 24), the dynamic linker uses namespaces to isolate system libraries from application libraries. This prevents apps from using private system APIs.
+
+### Namespace restrictions
+
+- Apps cannot load non-public system libraries
+- System libraries are in a separate namespace from app libraries
+- Attempting to load restricted libraries results in errors
+
+Example error:
+```
+dlopen failed: library "libandroid_runtime.so" not found
+```
+
+<Warning>
+  Do not attempt to use private system libraries. They may change or disappear between Android versions, breaking your app.
+</Warning>
+
+## Common loading issues
+
+### Missing dependencies
+
+```
+java.lang.UnsatisfiedLinkError: dlopen failed: library "libmissing.so" not found
+```
+
+**Solutions:**
+- Ensure all dependencies are packaged in your APK
+- Check for ABI mismatches (mixing 32-bit and 64-bit libraries)
+- Verify library names in `NEEDED` entries match actual filenames
+
+### Symbol not found
+
+```
+java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol "_Z10SomeFunctionv"
+```
+
+**Solutions:**
+- Verify the symbol exists: `nm -D libexample.so | grep SomeFunction`
+- Check for C++ name mangling issues (use `extern "C"`)
+- Ensure the library exporting the symbol is loaded first
+
+### Text relocations
+
+```
+WARNING: linker: libexample.so has text relocations
+```
+
+Text relocations are not allowed on Android 6.0+ (API level 23) for security reasons.
+
+**Solution:** Rebuild with position-independent code:
+```bash
+# In CMakeLists.txt
+target_compile_options(mylib PRIVATE -fPIC)
+```
+
+## Performance considerations
+
+### Minimize library count
+
+Each library has overhead:
+- Load time
+- Memory for ELF headers and tables
+- Symbol lookup time
+
+Consider merging small libraries into larger ones.
+
+### Use symbol versioning
+
+Symbol versioning allows you to maintain ABI compatibility while changing implementations:
+
+```c
+__asm__(".symver old_func,func@VERS_1.0");
+__asm__(".symver new_func,func@@VERS_2.0");
+```
+
+### Preload critical libraries
+
+Load frequently-used libraries at app startup to avoid delays later:
+
+```java
+static {
+    System.loadLibrary("native-lib");
+}
+```
+
+## Debugging linker issues
+
+### Enable linker debugging
+
+Set environment variables to get detailed linker logs:
+
+```bash
+adb shell setprop debug.ld.all dlerror,dlopen,dlsym
+adb logcat | grep linker
+```
+
+### Check library dependencies
+
+```bash
+# List all dependencies
+readelf -d libexample.so
+
+# Check for missing symbols
+nm -u libexample.so
+
+# Verify exported symbols
+nm -D libexample.so
+```
+
+## Additional resources
+
+For more detailed information about dynamic linker changes across Android versions:
+
+- [Android changes for NDK developers](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md) - Essential reading for understanding linker behavior changes
+- [Bionic status documentation](https://android.googlesource.com/platform/bionic/+/master/docs/status.md) - API availability and behavior changes

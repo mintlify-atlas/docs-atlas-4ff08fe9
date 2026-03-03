@@ -1,0 +1,576 @@
+---
+title: Bionic C library
+description: Understanding Android's C library (bionic), its differences from glibc, and platform compatibility
+---
+
+Bionic is Android's C library, math library, and dynamic linker. Understanding bionic's characteristics and differences from standard C libraries like glibc is essential for writing portable and compatible NDK code.
+
+## What is bionic?
+
+Bionic is Android's implementation of the C standard library, providing:
+
+- **Standard C library functions**: malloc, printf, file I/O, etc.
+- **POSIX APIs**: Threading, sockets, file operations
+- **Math library (libm)**: Mathematical functions
+- **Dynamic linker**: Loads shared libraries at runtime
+- **Android-specific extensions**: Additional APIs for Android platform integration
+
+<Info>
+  Bionic is BSD-licensed (not GPL), which aligns with Android's licensing requirements and allows broader use in proprietary code.
+</Info>
+
+## Why bionic exists
+
+Android created bionic instead of using existing C libraries for several reasons:
+
+<AccordionGroup>
+  <Accordion title="Licensing">
+    - **BSD license** instead of GPL (glibc's license)
+    - Allows proprietary code without GPL restrictions
+    - More flexible for device manufacturers and app developers
+  </Accordion>
+  
+  <Accordion title="Size optimization">
+    - Smaller memory footprint than glibc
+    - Critical for resource-constrained mobile devices
+    - Stripped-down implementation focused on Android needs
+    - Original glibc: ~2-3 MB, bionic: ~500-800 KB
+  </Accordion>
+  
+  <Accordion title="Mobile-specific features">
+    - Optimized for ARM processors (primary Android architecture)
+    - Fast thread-local storage (TLS)
+    - Efficient memory allocator for mobile workloads
+    - Support for Android-specific kernel features
+  </Accordion>
+  
+  <Accordion title="Security">
+    - Built-in FORTIFY_SOURCE protections
+    - Stack canaries and buffer overflow detection
+    - Secure random number generation
+    - Modern security features from the ground up
+  </Accordion>
+</AccordionGroup>
+
+## Key differences from glibc
+
+Understanding these differences helps avoid portability issues:
+
+### Missing or limited functionality
+
+Bionic intentionally omits some glibc features:
+
+<Tabs>
+  <Tab title="Locale support">
+    ```c
+    // Limited locale support
+    #include <locale.h>
+    
+    // This works but has limited effect
+    setlocale(LC_ALL, "fr_FR.UTF-8");
+    
+    // Many locale-specific functions have limited functionality:
+    // - strcoll(): Acts like strcmp() in older Android versions
+    // - strxfrm(): Limited transformation support
+    // - Monetary and numeric formatting: Limited support
+    ```
+    
+    <Warning>
+      Before Android 5.0 (API 21), locale support was extremely limited. From API 21+, ICU4C provides comprehensive internationalization support.
+    </Warning>
+    
+    **Solution**: Use ICU4C for internationalization:
+    ```c
+    #include <unicode/ucol.h>  // ICU collation
+    #include <unicode/udat.h>  // ICU date formatting
+    ```
+  </Tab>
+  
+  <Tab title="Signal handling">
+    ```c
+    // Some signal features differ or are unavailable
+    #include <signal.h>
+    
+    // sigsetjmp/siglongjmp behavior differences
+    // Some real-time signals may be reserved by Android
+    // SIGPIPE is handled differently
+    ```
+    
+    <Note>
+      Android uses certain signals internally (e.g., for garbage collection in ART). Avoid relying on signal-based IPC or using signals 32-63.
+    </Note>
+  </Tab>
+  
+  <Tab title="Threading extensions">
+    ```c
+    // Some pthread extensions not available
+    #include <pthread.h>
+    
+    // pthread_cancel() behavior is different
+    // No pthread_kill_other_threads_np()
+    // Limited pthread_attr_setaffinity_np() support
+    ```
+    
+    **Available alternative**:
+    ```c
+    // Use Android's sched_setaffinity instead
+    #include <sched.h>
+    
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(0, &cpuset);  // Pin to CPU 0
+    sched_setaffinity(0, sizeof(cpuset), &cpuset);
+    ```
+  </Tab>
+  
+  <Tab title="System V IPC">
+    ```c
+    // System V IPC not supported (by design)
+    // These headers/functions are NOT available:
+    // - <sys/shm.h>    (shared memory)
+    // - <sys/msg.h>    (message queues)
+    // - <sys/sem.h>    (semaphores)
+    ```
+    
+    **Alternatives**:
+    ```c
+    // Use POSIX shared memory instead
+    #include <sys/mman.h>
+    int fd = shm_open("/myshm", O_CREAT | O_RDWR, 0666);
+    ftruncate(fd, SIZE);
+    void* ptr = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    
+    // Use POSIX semaphores
+    #include <semaphore.h>
+    sem_t* sem = sem_open("/mysem", O_CREAT, 0666, 1);
+    ```
+  </Tab>
+</Tabs>
+
+### Implementation differences
+
+<Warning>
+  Some functions exist but behave differently than glibc:
+</Warning>
+
+```c
+// DNS resolution differences
+#include <netdb.h>
+
+// getaddrinfo() uses Android's DNS resolver
+// - May respect per-app VPN settings
+// - Different caching behavior
+// - May use DNS-over-TLS depending on Android version
+
+// gethostbyname() is deprecated but available
+// Prefer getaddrinfo() for new code
+```
+
+## API levels and compatibility
+
+Bionic evolves with Android versions. Functions are added and behavior changes across API levels:
+
+### Understanding API levels
+
+<Tabs>
+  <Tab title="What are API levels?">
+    Each Android version has an API level:
+    
+    | Android Version | API Level | Release Year |
+    |----------------|-----------|-------------|
+    | Android 15 | 35 | 2024 |
+    | Android 14 | 34 | 2023 |
+    | Android 13 | 33 | 2022 |
+    | Android 12L | 32 | 2022 |
+    | Android 12 | 31 | 2021 |
+    | Android 11 | 30 | 2020 |
+    | Android 10 | 29 | 2019 |
+    | Android 9 (Pie) | 28 | 2018 |
+    | Android 8.1 (Oreo) | 27 | 2017 |
+    | Android 8.0 (Oreo) | 26 | 2017 |
+    | Android 7.1 (Nougat) | 25 | 2016 |
+    | Android 7.0 (Nougat) | 24 | 2016 |
+    | Android 6.0 (Marshmallow) | 23 | 2015 |
+    | Android 5.1 (Lollipop) | 22 | 2015 |
+    | Android 5.0 (Lollipop) | 21 | 2014 |
+    
+    <Info>
+      Your app's `minSdkVersion` determines which APIs you can use. Features from higher API levels won't be available on older devices.
+    </Info>
+  </Tab>
+  
+  <Tab title="Compile-time vs runtime">
+    Two different API level concepts:
+    
+    **Compile-time API level** (`__ANDROID_API__`):
+    ```c
+    // Set in build configuration
+    // Determines which headers/functions are visible
+    
+    #if __ANDROID_API__ >= 21
+        // Can use functions added in API 21
+        #include <android/trace.h>
+        ATrace_beginSection("MySection");
+    #endif
+    ```
+    
+    **Runtime API level** (`android_get_device_api_level()`):
+    ```c
+    #include <android/api-level.h>
+    
+    int device_api = android_get_device_api_level();
+    if (device_api >= 28) {
+        // Device is running Android 9+, can use newer features
+        use_new_api();
+    } else {
+        // Fallback for older devices
+        use_legacy_api();
+    }
+    ```
+    
+    <Warning>
+      Don't confuse these! Your app must handle running on devices with API levels >= minSdkVersion but < targetSdkVersion.
+    </Warning>
+  </Tab>
+  
+  <Tab title="Dynamic API checking">
+    For maximum compatibility, check at runtime:
+    
+    ```c
+    #include <dlfcn.h>
+    #include <android/api-level.h>
+    
+    void use_optional_feature() {
+        // Check if function exists at runtime
+        void* handle = dlopen("libc.so", RTLD_NOW);
+        
+        typedef int (*func_ptr)(const char*);
+        func_ptr new_func = (func_ptr)dlsym(handle, "new_function");
+        
+        if (new_func != NULL) {
+            // Function available, use it
+            new_func("data");
+        } else {
+            // Not available, use fallback
+            fallback_implementation("data");
+        }
+        
+        dlclose(handle);
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Major API level milestones
+
+Key bionic improvements by API level:
+
+<AccordionGroup>
+  <Accordion title="API 21 (Android 5.0 - Lollipop)">
+    **Major improvements**:
+    - 64-bit support (arm64-v8a, x86_64)
+    - Significantly improved locale support via ICU
+    - Full C11 threading support
+    - Position-independent executables (PIE) required
+    
+    ```c
+    // Now available in API 21+
+    #include <threads.h>  // C11 threads
+    
+    thrd_t thread;
+    thrd_create(&thread, thread_func, arg);
+    ```
+    
+    <Note>
+      API 21 is often considered the minimum for modern NDK development due to 64-bit and improved standards compliance.
+    </Note>
+  </Accordion>
+  
+  <Accordion title="API 23 (Android 6.0 - Marshmallow)">
+    **Major changes**:
+    - Runtime permissions affect file access
+    - Better FORTIFY_SOURCE protections
+    - Enhanced DNS resolution
+    
+    ```c
+    // Enhanced security checks
+    char buffer[10];
+    // This will abort at runtime if overflow detected:
+    strcpy(buffer, long_string);  // Caught by FORTIFY_SOURCE
+    ```
+  </Accordion>
+  
+  <Accordion title="API 24 (Android 7.0 - Nougat)">
+    **Major changes**:
+    - Private API restrictions begin
+    - Cannot use non-public symbols from platform libraries
+    - File-based encryption affects file paths
+    
+    <Warning>
+      Starting in API 24, directly linking against private platform libraries (like libandroid_runtime.so) is restricted. Use only public NDK APIs.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="API 28 (Android 9.0 - Pie)">
+    **Major restrictions**:
+    - Strict enforcement of public API access
+    - Gray-list restrictions on non-SDK interfaces
+    - Enhanced stack protections
+    
+    ```c
+    // API 28+ has stronger symbol restrictions
+    // Cannot dlopen() private libraries
+    void* handle = dlopen("libutils.so", RTLD_NOW);  // Will fail!
+    // Use only public NDK libraries
+    ```
+  </Accordion>
+  
+  <Accordion title="API 29 (Android 10)">
+    **Features**:
+    - Neural Networks API 1.2
+    - Scoped storage affects file access
+    - APEX modularization (bionic can be updated independently)
+    
+    ```c
+    #include <android/sharedmem.h>
+    // Enhanced shared memory API
+    int fd = ASharedMemory_create("myshm", size);
+    ```
+  </Accordion>
+  
+  <Accordion title="API 30+ (Android 11+)">
+    **Ongoing improvements**:
+    - Continued security hardening
+    - New standard library features
+    - Performance optimizations
+    - Regular bionic updates via APEX
+  </Accordion>
+</AccordionGroup>
+
+## Standard library support
+
+Bionic supports most C and C++ standards:
+
+### C standard library
+
+<Tabs>
+  <Tab title="C99">
+    **Fully supported** (all API levels):
+    ```c
+    #include <stdint.h>
+    #include <stdbool.h>
+    #include <inttypes.h>
+    
+    // C99 features available
+    int64_t value = INT64_MAX;
+    bool flag = true;
+    printf("%" PRId64, value);
+    ```
+  </Tab>
+  
+  <Tab title="C11">
+    **Mostly supported** (API 21+ for full support):
+    ```c
+    #include <threads.h>     // C11 threading (API 21+)
+    #include <uchar.h>       // Unicode utilities
+    #include <stdatomic.h>   // Atomic operations
+    
+    // C11 atomic operations
+    _Atomic int counter = 0;
+    atomic_fetch_add(&counter, 1);
+    
+    // C11 threads
+    thrd_t thread;
+    thrd_create(&thread, my_func, NULL);
+    ```
+    
+    **Not supported**:
+    - `<stdnoreturn.h>` (use compiler attributes instead)
+    - Optional features like `<complex.h>` tgmath
+  </Tab>
+  
+  <Tab title="C17/C18">
+    **Partially supported**:
+    ```c
+    // Most C17 features are available
+    // Mainly bug fixes and clarifications to C11
+    // Bionic implements most relevant features
+    ```
+  </Tab>
+</Tabs>
+
+### C++ standard library
+
+Bionic works with libc++ (LLVM's C++ standard library):
+
+```cpp
+// C++17 features available with recent NDK
+#include <filesystem>
+#include <optional>
+#include <variant>
+#include <string_view>
+
+std::optional<int> maybe_value = std::nullopt;
+std::string_view sv = "hello";
+
+// C++20 features (NDK r23+)
+#include <span>
+#include <ranges>
+```
+
+<Info>
+  The NDK uses **libc++** (LLVM's C++ library), not GNU libstdc++. This is important for C++ ABI compatibility.
+</Info>
+
+## Common compatibility issues
+
+### Using conditionals for API availability
+
+```c
+#include <android/api-level.h>
+
+void platform_specific_code() {
+    #if __ANDROID_API__ >= 28
+        // Compiled in if building for API 28+
+        use_api28_function();
+    #else
+        // Fallback for older API levels
+        use_legacy_function();
+    #endif
+    
+    // Runtime check
+    if (android_get_device_api_level() >= 28) {
+        // Runtime decision based on actual device
+        use_newer_feature();
+    }
+}
+```
+
+### Handling missing functions
+
+```c
+// Provide fallback for functions not in older API levels
+#include <dlfcn.h>
+
+#if __ANDROID_API__ < 21
+// Provide your own implementation
+int my_missing_function() {
+    // Fallback implementation
+    return -1;
+}
+#else
+// Use system implementation
+extern int my_missing_function();
+#endif
+```
+
+### Weak linking for optional features
+
+```c
+// Weak linking allows graceful degradation
+__attribute__((weak)) int optional_function(int arg);
+
+void use_optional_feature() {
+    if (optional_function != NULL) {
+        optional_function(42);
+    } else {
+        // Function not available, use alternative
+        fallback_implementation();
+    }
+}
+```
+
+## Best practices
+
+### Set appropriate minSdkVersion
+
+```groovy
+// build.gradle
+android {
+    defaultConfig {
+        // Choose based on required features and target market
+        minSdkVersion 21  // Recommended minimum for 2024
+        targetSdkVersion 34
+    }
+}
+```
+
+<Note>
+  **Recommended minSdkVersion**: API 21 (Android 5.0)
+  
+  - Covers 99%+ of active devices (as of 2024)
+  - 64-bit support
+  - Better standards compliance
+  - Modern security features
+</Note>
+
+### Check bionic status documentation
+
+For definitive API availability, consult:
+
+- [Android bionic status](https://android.googlesource.com/platform/bionic/+/master/docs/status.md)
+- [Android changes for NDK developers](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md)
+
+### Use feature detection
+
+```c
+// Better than hardcoded version checks
+#include <unistd.h>
+
+if (sysconf(_SC_NPROCESSORS_ONLN) > 0) {
+    // Feature available
+} else {
+    // Not available or failed
+}
+```
+
+### Avoid private APIs
+
+<Warning>
+  Never use symbols not in the public NDK API. They may:
+  - Disappear in future Android versions
+  - Behave differently across devices
+  - Cause your app to be rejected or break
+</Warning>
+
+```c
+// BAD - private API usage
+// void* handle = dlopen("libutils.so", RTLD_NOW);
+
+// GOOD - use public NDK APIs only
+#include <android/log.h>
+__android_log_print(ANDROID_LOG_INFO, "TAG", "Message");
+```
+
+## Testing across API levels
+
+Ensure compatibility by testing on multiple Android versions:
+
+```bash
+# Create emulators for different API levels
+avdmanager create avd -n api21 -k "system-images;android-21;default;x86_64"
+avdmanager create avd -n api28 -k "system-images;android-28;default;x86_64"
+avdmanager create avd -n api34 -k "system-images;android-34;default;x86_64"
+
+# Run tests on each
+adb -e shell am instrument -w com.example.app.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+## Resources
+
+For more information on bionic:
+
+- [Bionic status documentation](https://android.googlesource.com/platform/bionic/+/master/docs/status.md) - API availability by version
+- [Changes for NDK developers](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md) - Important changes across versions
+- [32-bit ABI bugs](https://android.googlesource.com/platform/bionic/+/master/docs/32-bit-abi.md) - Known issues in 32-bit code
+- [NDK API Reference](https://developer.android.com/ndk/reference) - Official API documentation
+
+## Next steps
+
+- Explore [build systems](/build/overview) for compiling with specific API levels
+- Review [native development](/concepts/native-development) best practices
+- Understand [JNI](/concepts/jni-overview) for Java/native interaction
+
+<Info>
+  When in doubt about API availability, compile with the lowest minSdkVersion you support and test on actual devices running that Android version.
+</Info>

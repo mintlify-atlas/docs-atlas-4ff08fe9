@@ -1,0 +1,460 @@
+---
+title: 'Bionic API status'
+description: 'POSIX compliance, available functions, and API availability across Android versions'
+---
+
+## About Bionic
+
+Bionic is Android's C library, math library, and dynamic linker. It provides a subset of standard C library functionality with Android-specific optimizations and modifications.
+
+<Note>
+  Bionic is not fully POSIX-compliant. Always check API availability for your target Android version before using standard C library functions.
+</Note>
+
+## POSIX compliance
+
+Bionic provides partial POSIX compliance with some differences from standard glibc implementations.
+
+### Supported POSIX features
+
+<ResponseField name="Threading" type="Full support">
+  pthread APIs are fully supported with Android-specific extensions for thread naming and priority.
+</ResponseField>
+
+<ResponseField name="File I/O" type="Full support">
+  Standard file operations (open, read, write, close) are fully supported.
+</ResponseField>
+
+<ResponseField name="Memory management" type="Full support">
+  malloc, free, and related APIs with Android-specific allocators.
+</ResponseField>
+
+<ResponseField name="Sockets" type="Full support">
+  Socket APIs for network communication, including Unix domain sockets.
+</ResponseField>
+
+### Limited or missing POSIX features
+
+<Warning>
+  The following POSIX features have limited support or are unavailable in Bionic.
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="System V IPC">
+    System V shared memory, semaphores, and message queues are **not supported**.
+    
+    **Alternative**: Use POSIX shared memory (`shm_open`, `mmap`) or Android IPC mechanisms.
+  </Accordion>
+  
+  <Accordion title="Locale support">
+    Very limited locale support. Most locale functions are stubs.
+    
+    **Impact**: Functions like `setlocale()`, `nl_langinfo()` have minimal functionality.
+  </Accordion>
+  
+  <Accordion title="Real-time extensions">
+    Limited support for POSIX real-time extensions.
+    
+    **Available**: Basic timer APIs  
+    **Limited**: Real-time signals, advanced scheduling
+  </Accordion>
+  
+  <Accordion title="Wide character support">
+    Basic wide character support, but not all functions are implemented.
+    
+    **Impact**: Some `wchar.h` functions may be missing or have limited functionality.
+  </Accordion>
+</AccordionGroup>
+
+## Standard C library functions
+
+### String functions
+
+All standard string functions are available across all Android API levels:
+
+```c
+#include <string.h>
+
+// Always available
+strlen, strcpy, strncpy, strcat, strncat
+strcmp, strncmp, strchr, strrchr, strstr
+memcpy, memmove, memset, memcmp, memchr
+strtok, strerror, strdup
+```
+
+### Code example: Safe string operations
+
+```c
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void safe_string_ops() {
+    char dest[32];
+    const char* src = "Hello, Android NDK!";
+    
+    // Use strncpy to prevent buffer overflow
+    strncpy(dest, src, sizeof(dest) - 1);
+    dest[sizeof(dest) - 1] = '\0'; // Ensure null termination
+    
+    // Use strncat for safe concatenation
+    char buffer[64] = "Prefix: ";
+    strncat(buffer, src, sizeof(buffer) - strlen(buffer) - 1);
+    
+    // Modern alternative: use strlcpy/strlcat (API 28+)
+    #if __ANDROID_API__ >= 28
+        char modern[32];
+        strlcpy(modern, src, sizeof(modern));
+    #endif
+}
+```
+
+### Math functions
+
+Standard math library functions from `<math.h>`:
+
+```c
+#include <math.h>
+
+// Always available
+sin, cos, tan, asin, acos, atan, atan2
+sqrt, pow, exp, log, log10
+fabs, ceil, floor, round, fmod
+
+// Example usage
+double calculate_distance(double x1, double y1, double x2, double y2) {
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    return sqrt(dx * dx + dy * dy);
+}
+```
+
+## API availability by Android version
+
+### Android 5.0 (API 21) - Minimum supported
+
+<Warning>
+  NDK r23 and later dropped support for API levels below 21. Always use API 21 as minimum.
+</Warning>
+
+API 21 includes:
+- Complete pthread support
+- Standard C11 features (except threads.h)
+- Basic math functions
+- File I/O and networking
+
+### Android 8.0 (API 26) - Major improvements
+
+New in API 26:
+
+<ParamField path="open_memstream" type="function">
+  Create a stream that writes to a dynamically allocated buffer.
+</ParamField>
+
+<ParamField path="getentropy" type="function">
+  Secure random number generation (cryptographically secure).
+</ParamField>
+
+<ParamField path="glob" type="function">
+  Path pattern matching (globbing).
+</ParamField>
+
+```c
+#if __ANDROID_API__ >= 26
+#include <sys/random.h>
+
+void generate_secure_random() {
+    unsigned char random_data[32];
+    if (getentropy(random_data, sizeof(random_data)) == 0) {
+        // Use cryptographically secure random data
+    }
+}
+#endif
+```
+
+### Android 9.0 (API 28) - String safety
+
+New in API 28:
+
+<ParamField path="strlcpy" type="function">
+  Safe string copy with guaranteed null termination.
+</ParamField>
+
+<ParamField path="strlcat" type="function">
+  Safe string concatenation with size limits.
+</ParamField>
+
+```c
+#if __ANDROID_API__ >= 28
+#include <string.h>
+
+void safe_string_copy(char* dest, size_t dest_size, const char* src) {
+    // Returns length of src, truncates if needed
+    size_t result = strlcpy(dest, src, dest_size);
+    
+    if (result >= dest_size) {
+        // String was truncated
+        __android_log_print(ANDROID_LOG_WARN, "App", "String truncated");
+    }
+}
+#endif
+```
+
+### Android 12.0 (API 31) - Modern C features
+
+New in API 31:
+
+<ParamField path="timespec_get" type="function">
+  C11 time function for high-resolution timestamps.
+</ParamField>
+
+<ParamField path="aligned_alloc" type="function">
+  Allocate aligned memory (C11 standard).
+</ParamField>
+
+```c
+#if __ANDROID_API__ >= 31
+#include <time.h>
+#include <stdlib.h>
+
+void modern_c_features() {
+    // High-resolution timestamp
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    
+    // Aligned allocation for SIMD
+    void* aligned_data = aligned_alloc(32, 1024); // 32-byte aligned
+    if (aligned_data) {
+        // Use for SIMD operations
+        free(aligned_data);
+    }
+}
+#endif
+```
+
+## Function availability table
+
+### Standard C functions by API level
+
+| Function | API Level | Header | Notes |
+|----------|-----------|--------|-------|
+| `pthread_*` | 21+ | `<pthread.h>` | Full threading support |
+| `posix_memalign` | 21+ | `<stdlib.h>` | Aligned memory allocation |
+| `getentropy` | 26+ | `<sys/random.h>` | Secure random bytes |
+| `glob` | 26+ | `<glob.h>` | Pattern matching |
+| `strlcpy` | 28+ | `<string.h>` | Safe string copy |
+| `strlcat` | 28+ | `<string.h>` | Safe string concat |
+| `timespec_get` | 31+ | `<time.h>` | C11 time function |
+| `aligned_alloc` | 31+ | `<stdlib.h>` | C11 aligned allocation |
+| `timespec_getres` | 34+ | `<time.h>` | Timer resolution |
+
+### Math functions by API level
+
+| Function | API Level | Header | Notes |
+|----------|-----------|--------|-------|
+| `sin`, `cos`, `tan` | 21+ | `<math.h>` | Basic trigonometry |
+| `log2`, `exp2` | 21+ | `<math.h>` | Base-2 logarithm/exponent |
+| `lgamma`, `tgamma` | 21+ | `<math.h>` | Gamma functions |
+| `nextafter` | 21+ | `<math.h>` | Next representable value |
+| `fma` | 21+ | `<math.h>` | Fused multiply-add |
+
+## Threading APIs
+
+Bionic provides full pthread support with Android-specific extensions.
+
+### Code example: Thread creation
+
+```c
+#include <pthread.h>
+#include <android/log.h>
+#include <unistd.h>
+
+#define LOG_TAG "Threading"
+
+void* thread_function(void* arg) {
+    const char* name = (const char*)arg;
+    
+    // Set thread name (Android-specific, helps with debugging)
+    pthread_setname_np(pthread_self(), name);
+    
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, 
+        "Thread '%s' started", name);
+    
+    // Do work...
+    sleep(2);
+    
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, 
+        "Thread '%s' finished", name);
+    
+    return NULL;
+}
+
+void create_worker_thread() {
+    pthread_t thread;
+    pthread_attr_t attr;
+    
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    
+    if (pthread_create(&thread, &attr, thread_function, "Worker") == 0) {
+        pthread_join(thread, NULL);
+    }
+    
+    pthread_attr_destroy(&attr);
+}
+```
+
+### Code example: Mutexes and synchronization
+
+```c
+#include <pthread.h>
+#include <stdlib.h>
+
+typedef struct {
+    pthread_mutex_t mutex;
+    int counter;
+} shared_data_t;
+
+shared_data_t* create_shared_data() {
+    shared_data_t* data = malloc(sizeof(shared_data_t));
+    pthread_mutex_init(&data->mutex, NULL);
+    data->counter = 0;
+    return data;
+}
+
+void increment_counter(shared_data_t* data) {
+    pthread_mutex_lock(&data->mutex);
+    data->counter++;
+    pthread_mutex_unlock(&data->mutex);
+}
+
+void destroy_shared_data(shared_data_t* data) {
+    pthread_mutex_destroy(&data->mutex);
+    free(data);
+}
+```
+
+## Memory allocation
+
+Bionic provides standard memory allocation with Android-specific optimizations.
+
+### Available allocators
+
+<ResponseField name="malloc/free" type="Standard">
+  Standard memory allocation. Uses jemalloc on most Android versions.
+</ResponseField>
+
+<ResponseField name="calloc" type="Standard">
+  Allocate and zero-initialize memory.
+</ResponseField>
+
+<ResponseField name="realloc" type="Standard">
+  Resize previously allocated memory.
+</ResponseField>
+
+<ResponseField name="posix_memalign" type="Aligned">
+  Allocate aligned memory. Available from API 21+.
+</ResponseField>
+
+### Code example: Memory allocation patterns
+
+```c
+#include <stdlib.h>
+#include <string.h>
+
+// Basic allocation
+void* allocate_buffer(size_t size) {
+    void* buffer = malloc(size);
+    if (buffer == NULL) {
+        // Handle allocation failure
+        return NULL;
+    }
+    memset(buffer, 0, size);
+    return buffer;
+}
+
+// Aligned allocation for SIMD
+void* allocate_aligned(size_t size, size_t alignment) {
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, alignment, size) != 0) {
+        return NULL;
+    }
+    return ptr;
+}
+
+// Example: SIMD-aligned buffer
+void example_simd_allocation() {
+    // Allocate 1KB buffer aligned to 16-byte boundary for NEON
+    void* simd_buffer = allocate_aligned(1024, 16);
+    if (simd_buffer) {
+        // Use with NEON intrinsics
+        free(simd_buffer);
+    }
+}
+```
+
+## Important differences from glibc
+
+<Warning>
+  These differences can cause issues when porting code from Linux to Android.
+</Warning>
+
+### Key differences
+
+1. **No System V IPC**: Use POSIX alternatives or Android-specific IPC
+2. **Limited locale support**: Don't rely on locale-specific formatting
+3. **Different allocator**: Memory allocation behavior may differ from glibc
+4. **No `dlmopen`**: Only standard `dlopen` is supported
+5. **Different signal handling**: Some signal behaviors differ from standard Linux
+
+### Code example: Portable code patterns
+
+```c
+// Instead of System V shared memory
+#ifdef __ANDROID__
+    // Use POSIX shared memory
+    #include <sys/mman.h>
+    int shm_fd = shm_open("/my_shm", O_CREAT | O_RDWR, 0600);
+#else
+    // Use System V on other platforms
+    #include <sys/shm.h>
+    int shm_id = shmget(IPC_PRIVATE, size, IPC_CREAT | 0600);
+#endif
+
+// Portable number formatting (locale-independent)
+#include <stdio.h>
+void format_number(char* buffer, size_t size, double value) {
+    // Don't use locale-specific formatting on Android
+    snprintf(buffer, size, "%.2f", value);
+}
+```
+
+## Official documentation
+
+<Card 
+  title="Android bionic status" 
+  icon="github" 
+  href="https://android.googlesource.com/platform/bionic/+/master/docs/status.md"
+>
+  Comprehensive status of Bionic APIs and POSIX compliance
+</Card>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Platform APIs" icon="layer-group" href="/api/platform-apis">
+    Platform API availability and private vs public APIs
+  </Card>
+  
+  <Card title="Android-specific APIs" icon="android" href="/api/android-specific">
+    NativeActivity, Asset Manager, and other Android APIs
+  </Card>
+  
+  <Card title="Dynamic linker" icon="link" href="/advanced/dynamic-linker">
+    Understanding Android's dynamic linker
+  </Card>
+  
+  <Card title="32-bit ABI issues" icon="microchip" href="/advanced/32bit-abi">
+    Known issues with 32-bit Android ABIs
+  </Card>
+</CardGroup>

@@ -1,0 +1,475 @@
+---
+title: "Understanding crashes"
+description: "Debugging native crashes, reading tombstones, and analyzing stack traces"
+---
+
+Native crashes in Android NDK code can be challenging to debug. Understanding tombstone files, stack traces, and crash signals is essential for diagnosing and fixing issues.
+
+## Native crash basics
+
+When native code crashes, Android generates a **tombstone** file containing detailed crash information. The crash also appears in logcat with a summary.
+
+### Common crash signals
+
+| Signal | Name | Common Cause |
+|--------|------|-------------|
+| `SIGSEGV` | Segmentation fault | Invalid memory access, null pointer dereference |
+| `SIGABRT` | Abort | Assertion failure, `abort()` called |
+| `SIGILL` | Illegal instruction | Executing invalid code, corrupted function pointer |
+| `SIGFPE` | Floating point exception | Division by zero, invalid arithmetic |
+| `SIGBUS` | Bus error | Misaligned memory access |
+| `SIGSTKFLT` | Stack fault | Stack overflow |
+
+## Finding crash information
+
+### Viewing tombstones
+
+Tombstone files are stored on the device:
+
+```bash
+# List tombstones
+adb shell ls -l /data/tombstones/
+
+# Pull the latest tombstone
+adb pull /data/tombstones/tombstone_00 .
+
+# Or view directly
+adb shell cat /data/tombstones/tombstone_00
+```
+
+<Warning>
+  Tombstone files are rotated. Pull them immediately after a crash before they're overwritten.
+</Warning>
+
+### Logcat crash output
+
+Crashes also appear in logcat:
+
+```bash
+# View crash logs
+adb logcat -s DEBUG:* AndroidRuntime:* libc:*
+
+# Or filter for specific signal
+adb logcat | grep -A 50 "signal 11 (SIGSEGV)"
+```
+
+## Reading tombstones
+
+A tombstone contains several sections with crucial debugging information.
+
+### Example tombstone
+
+```
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+Build fingerprint: 'google/sdk_gphone64_arm64/emulator64_arm64:13/TE1A.220922.034/10940250:userdebug/dev-keys'
+Revision: '0'
+ABI: 'arm64'
+Timestamp: 2026-03-03 10:15:23.456789012-0800
+Process uptime: 12s
+
+pid: 12345, tid: 12347, name: MyNativeThread  >>> com.example.myapp <<<
+uid: 10123
+tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000000
+Cause: null pointer dereference
+    x0  0000000000000000  x1  0000007ff8f12340  x2  0000000000000000  x3  0000007ff8f12380
+    x4  0000000000000001  x5  0000007ff8f123c0  x6  0000000000000000  x7  0000000000000000
+    x8  0000000000000000  x9  0000007ff8f12400  x10 0000000000000000  x11 0000000000000000
+    x12 0000000000000000  x13 0000000000000000  x14 0000000000000000  x15 0000000000000000
+    x16 0000007ff9a12340  x17 0000007ff9a12380  x18 0000007ff8e00000  x19 0000007ff8f12440
+    x20 0000000000000000  x21 0000007ff8f12480  x22 0000000000000000  x23 0000000000000000
+    x24 0000000000000000  x25 0000000000000000  x26 0000000000000000  x27 0000000000000000
+    x28 0000000000000000  x29 0000007ff8f124c0
+    lr  0000007ff9856abc  sp  0000007ff8f12440  pc  0000007ff9856ac4  pst 0000000060000000
+
+backtrace:
+      #00 pc 0000000000012ac4  /data/app/~~abcd1234/com.example.myapp-xyz/lib/arm64/libnative.so (crash_function+16)
+      #01 pc 0000000000012ab8  /data/app/~~abcd1234/com.example.myapp-xyz/lib/arm64/libnative.so (process_data+48)
+      #02 pc 0000000000012a00  /data/app/~~abcd1234/com.example.myapp-xyz/lib/arm64/libnative.so (Java_com_example_MyClass_nativeMethod+128)
+      #03 pc 00000000001f2340  /apex/com.android.art/lib64/libart.so (art_quick_generic_jni_trampoline+144)
+      #04 pc 00000000001e9abc  /apex/com.android.art/lib64/libart.so (art::ArtMethod::Invoke+244)
+```
+
+### Key sections explained
+
+#### Signal information
+
+```
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000000
+Cause: null pointer dereference
+```
+
+- **Signal 11 (SIGSEGV)** - Segmentation fault
+- **Code 1 (SEGV_MAPERR)** - Accessed unmapped memory
+- **Fault addr 0x0** - Attempted to access address 0 (null pointer)
+
+#### CPU registers
+
+```
+    x0  0000000000000000  x1  0000007ff8f12340  ...
+    lr  0000007ff9856abc  sp  0000007ff8f12440  pc  0000007ff9856ac4
+```
+
+- **pc (program counter)** - Where the crash occurred
+- **sp (stack pointer)** - Current stack position
+- **lr (link register)** - Return address
+- **x0-x30** - General purpose registers (may contain function arguments)
+
+#### Stack trace (backtrace)
+
+```
+backtrace:
+      #00 pc 0000000000012ac4  /data/.../libnative.so (crash_function+16)
+      #01 pc 0000000000012ab8  /data/.../libnative.so (process_data+48)
+```
+
+Each frame shows:
+- Frame number
+- Program counter offset
+- Library path
+- Function name and offset (if symbols available)
+
+## Analyzing stack traces
+
+### Using addr2line
+
+Convert addresses to source code locations:
+
+```bash
+# For ARM64
+$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-addr2line \
+    -e obj/local/arm64-v8a/libnative.so \
+    -f -C 0000000000012ac4
+```
+
+Output:
+```
+crash_function
+/path/to/source/native.cpp:42
+```
+
+### Using ndk-stack
+
+Automatic symbolication of entire stack traces:
+
+```bash
+# From logcat
+adb logcat | ndk-stack -sym obj/local/arm64-v8a
+
+# From tombstone
+ndk-stack -sym obj/local/arm64-v8a -dump tombstone_00
+```
+
+Output:
+```
+********** Crash dump: **********
+Build fingerprint: '...'
+#00  0x0000000000012ac4  crash_function
+                        /path/to/native.cpp:42
+#01  0x0000000000012ab8  process_data
+                        /path/to/native.cpp:78
+```
+
+<Warning>
+  `ndk-stack` requires unstripped `.so` files with debug symbols. Never strip libraries during development.
+</Warning>
+
+### Using Android Studio
+
+Android Studio can automatically symbolicate crashes:
+
+1. Go to **View > Tool Windows > Logcat**
+2. Crashes with available symbols show as clickable links
+3. Click to jump to the source line
+
+## Common crash patterns
+
+### Null pointer dereference
+
+```
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000000
+Cause: null pointer dereference
+```
+
+**Code example:**
+
+```cpp
+char* ptr = nullptr;
+*ptr = 'x';  // Crash: SIGSEGV at address 0x0
+```
+
+**Fix:** Always check pointers before dereferencing:
+
+```cpp
+if (ptr != nullptr) {
+    *ptr = 'x';
+}
+```
+
+### Use after free
+
+```
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x00007ff8f12340
+```
+
+Fault address is non-zero but unmapped.
+
+**Code example:**
+
+```cpp
+char* ptr = new char[100];
+delete[] ptr;
+*ptr = 'x';  // Crash: accessing freed memory
+```
+
+**Detection:** Use Address Sanitizer:
+
+```cmake
+target_compile_options(mylib PRIVATE -fsanitize=address)
+target_link_options(mylib PRIVATE -fsanitize=address)
+```
+
+### Stack overflow
+
+```
+signal 11 (SIGSEGV), code 2 (SEGV_ACCERR)
+# Stack pointer (sp) is near stack boundary
+```
+
+**Code example:**
+
+```cpp
+void recursive() {
+    char buffer[10000];
+    recursive();  // Infinite recursion
+}
+```
+
+**Fix:**
+- Limit recursion depth
+- Use iteration instead of recursion
+- Reduce stack-allocated buffer sizes
+
+### Buffer overflow
+
+```
+signal 11 (SIGSEGV) or signal 6 (SIGABRT)
+Abort message: 'stack corruption detected'
+```
+
+**Code example:**
+
+```cpp
+char buffer[10];
+strcpy(buffer, "This is way too long");  // Buffer overflow
+```
+
+**Detection:** Use Address Sanitizer or enable stack protector:
+
+```cmake
+target_compile_options(mylib PRIVATE -fstack-protector-strong)
+```
+
+### Assertion failures
+
+```
+signal 6 (SIGABRT)
+Abort message: 'assertion failed: x > 0'
+```
+
+**Code example:**
+
+```cpp
+assert(x > 0);  // Crashes if x <= 0
+```
+
+The abort message tells you exactly which assertion failed.
+
+### Invalid JNI references
+
+```
+signal 6 (SIGABRT)
+Abort message: 'JNI DETECTED ERROR: use of deleted local reference'
+```
+
+**Code example:**
+
+```cpp
+jstring str = env->NewStringUTF("hello");
+env->DeleteLocalRef(str);
+const char* chars = env->GetStringUTFChars(str, NULL);  // Crash
+```
+
+**Prevention:**
+- Enable CheckJNI: `adb shell setprop debug.checkjni 1`
+- Never use JNI references after deleting them
+- Don't cache local references across JNI calls
+
+## Debugging techniques
+
+### Using debuggers
+
+#### LLDB in Android Studio
+
+1. Set breakpoint in native code
+2. Run app in debug mode
+3. Use debug controls when breakpoint hits
+
+#### Command-line debugging
+
+```bash
+# Attach to running process
+adb shell
+run-as com.example.myapp
+lldb -p $(pidof com.example.myapp)
+```
+
+### Sanitizers
+
+Enable runtime error detection:
+
+```cmake
+# Address Sanitizer (memory errors)
+target_compile_options(mylib PRIVATE -fsanitize=address)
+target_link_options(mylib PRIVATE -fsanitize=address)
+
+# Undefined Behavior Sanitizer
+target_compile_options(mylib PRIVATE -fsanitize=undefined)
+target_link_options(mylib PRIVATE -fsanitize=undefined)
+
+# Thread Sanitizer (race conditions)
+target_compile_options(mylib PRIVATE -fsanitize=thread)
+target_link_options(mylib PRIVATE -fsanitize=thread)
+```
+
+<Warning>
+  Sanitizers significantly increase app size and reduce performance. Use only during development.
+</Warning>
+
+### Logging and diagnostics
+
+Add strategic logging:
+
+```cpp
+#include <android/log.h>
+
+#define TAG "MyNativeLib"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+void process_data(Data* data) {
+    LOGD("process_data: data=%p", data);
+    if (data == nullptr) {
+        LOGE("process_data: null data!");
+        return;
+    }
+    LOGD("process_data: data->size=%d", data->size);
+    // ...
+}
+```
+
+### Crash reporting services
+
+Use crash reporting to collect crashes from users:
+
+- **Firebase Crashlytics** - Google's crash reporting
+- **Sentry** - Open source crash reporting
+- **Bugsnag** - Commercial crash reporting
+
+These services automatically symbolicate and aggregate crashes.
+
+## Reproducing crashes
+
+### Make crashes consistent
+
+1. **Clear app data** before each test:
+   ```bash
+   adb shell pm clear com.example.myapp
+   ```
+
+2. **Use same device/emulator** - Different devices may behave differently
+
+3. **Test with sanitizers** - Makes crashes more reliable:
+   ```cmake
+   target_compile_options(mylib PRIVATE -fsanitize=address)
+   ```
+
+4. **Disable optimizations** during debugging:
+   ```cmake
+   target_compile_options(mylib PRIVATE -O0 -g)
+   ```
+
+### Minimize test case
+
+Reduce the code to the smallest example that crashes:
+
+1. Remove unrelated code
+2. Simplify inputs
+3. Isolate the crashing function
+4. Create a standalone reproduction
+
+## Prevention strategies
+
+### Code review checklist
+
+- Check all pointers for null before dereferencing
+- Verify array bounds on all accesses
+- Match every `new` with `delete`, `malloc` with `free`
+- Delete JNI local references in loops
+- Use RAII (Resource Acquisition Is Initialization)
+- Avoid manual memory management when possible
+
+### Defensive programming
+
+```cpp
+// Add assertions for assumptions
+assert(buffer != nullptr);
+assert(size > 0);
+assert(index < array_size);
+
+// Validate inputs
+if (buffer == nullptr || size <= 0) {
+    LOGE("Invalid parameters");
+    return -1;
+}
+
+// Use safer alternatives
+// Instead of strcpy:
+strncpy(dest, src, sizeof(dest) - 1);
+dest[sizeof(dest) - 1] = '\0';
+
+// Better yet, use C++ strings:
+std::string safe_str = src;
+```
+
+### Modern C++ practices
+
+```cpp
+// Use smart pointers
+std::unique_ptr<Data> data = std::make_unique<Data>();
+// Automatically freed, no manual delete needed
+
+// Use containers instead of raw arrays
+std::vector<int> vec = {1, 2, 3};
+// Bounds checking with .at()
+int value = vec.at(0);
+
+// Use RAII for resources
+class FileHandle {
+public:
+    FileHandle(const char* path) : fd(open(path, O_RDONLY)) {}
+    ~FileHandle() { if (fd >= 0) close(fd); }
+private:
+    int fd;
+};
+```
+
+## Additional resources
+
+- [Native crash documentation](https://source.android.com/devices/tech/debug/native-crash) - Detailed AOSP reference
+- [Debugging crashes overview](https://source.android.com/devices/tech/debug) - Android debugging guide
+- [Common NDK problems](/advanced/common-problems) - FAQ and solutions
+
+<Warning>
+  Always keep unstripped `.so` files for every release build. You'll need them to symbolicate crashes from users.
+</Warning>

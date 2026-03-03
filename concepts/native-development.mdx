@@ -1,0 +1,254 @@
+---
+title: Native development on Android
+description: Learn when and why to use native code in Android applications
+---
+
+The Android Native Development Kit (NDK) allows you to include native C and C++ code in your Android applications, compiled as JNI shared libraries. This enables performance-critical components and code reuse from existing native codebases.
+
+## What is native development?
+
+Native development on Android involves writing application logic in C or C++ instead of Java or Kotlin. Your native code is compiled into shared libraries (`.so` files) that are packaged with your APK and called from Java/Kotlin code through the Java Native Interface (JNI).
+
+```c
+// Native C code (native-lib.c)
+#include <jni.h>
+#include <string.h>
+
+JNIEXPORT jstring JNICALL
+Java_com_example_app_MainActivity_stringFromJNI(JNIEnv* env, jobject thiz) {
+    return (*env)->NewStringUTF(env, "Hello from C");
+}
+```
+
+```kotlin
+// Kotlin code calling native method
+class MainActivity : AppCompatActivity() {
+    external fun stringFromJNI(): String
+    
+    companion object {
+        init {
+            System.loadLibrary("native-lib")
+        }
+    }
+}
+```
+
+## When to use the NDK
+
+The NDK is not suitable for all Android applications. Consider using native code when:
+
+<AccordionGroup>
+  <Accordion title="Performance-critical computation">
+    Native code can provide significant performance improvements for:
+    - Signal processing and audio/video codecs
+    - Physics simulations and game engines
+    - Image processing and computer vision
+    - Cryptographic operations
+    - Mathematical computations with tight loops
+  </Accordion>
+
+  <Accordion title="Reusing existing C/C++ libraries">
+    If you have existing native codebases:
+    - Game engines (Unreal, Unity native plugins)
+    - Cross-platform libraries
+    - Scientific computing libraries
+    - Third-party SDKs distributed as native libraries
+  </Accordion>
+
+  <Accordion title="Low-level system access">
+    Native code provides access to:
+    - POSIX APIs and system calls
+    - Hardware-specific features
+    - OpenGL ES, Vulkan graphics APIs
+    - OpenSL ES, AAudio for low-latency audio
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  Most Android apps do **not** need native code. The Java/Kotlin runtime provides excellent performance for typical application logic, and native development adds significant complexity.
+</Warning>
+
+## Benefits of native development
+
+### Performance advantages
+
+Native code can offer performance benefits in specific scenarios:
+
+- **No JIT overhead**: Compiled directly to machine code without JVM interpretation
+- **SIMD instructions**: Access to ARM NEON and x86 SSE/AVX vector instructions
+- **Manual memory management**: Fine-grained control over allocations and cache behavior
+- **Lower latency**: Reduced overhead for tight computational loops
+
+<Note>
+  Modern Android Runtime (ART) includes an ahead-of-time (AOT) compiler that optimizes Java/Kotlin code extensively. The performance gap between managed and native code has narrowed significantly.
+</Note>
+
+### Code reuse
+
+Leverage existing native codebases:
+
+- Share core logic between Android, iOS, and desktop platforms
+- Integrate mature C/C++ libraries without reimplementation
+- Maintain a single codebase for cross-platform features
+
+### Platform capabilities
+
+Access capabilities not exposed through Android framework:
+
+- Graphics APIs (Vulkan, OpenGL ES 3.x)
+- Audio APIs (AAudio, OpenSL ES)
+- Neural Networks API (NNAPI)
+- Camera2 NDK API
+
+## Tradeoffs and considerations
+
+### Increased complexity
+
+<Tabs>
+  <Tab title="Development complexity">
+    Native development introduces multiple layers of complexity:
+    
+    - **Language expertise**: Requires C/C++ knowledge and understanding of memory management
+    - **Build systems**: Must configure ndk-build or CMake in addition to Gradle
+    - **JNI overhead**: Need to write and maintain JNI bindings and type conversions
+    - **Multiple toolchains**: Different compilers and tools for each ABI
+  </Tab>
+  
+  <Tab title="Debugging challenges">
+    Debugging native code is more difficult:
+    
+    - **Crashes**: Segmentation faults and memory corruption vs. managed exceptions
+    - **Tools**: Requires LLDB debugger, native crash analysis
+    - **Symbolication**: Must ship or maintain symbol files for crash reporting
+    - **Memory issues**: No automatic garbage collection or bounds checking
+  </Tab>
+  
+  <Tab title="Maintenance burden">
+    Long-term maintenance costs:
+    
+    - **ABI compatibility**: Must support multiple CPU architectures
+    - **API level differences**: Handle platform version variations in bionic
+    - **Security updates**: Manual updates for native dependencies
+    - **Larger APK size**: Separate binaries for each supported ABI
+  </Tab>
+</Tabs>
+
+### Not always faster
+
+Common misconceptions about native code performance:
+
+<Info>
+  **JNI call overhead**: Calling native methods from Java/Kotlin has overhead. Frequent small native calls can be **slower** than pure Java/Kotlin code. Native code should do substantial work to amortize the JNI crossing cost.
+</Info>
+
+```kotlin
+// Anti-pattern: Too many small JNI calls
+for (i in 0 until 1000000) {
+    nativeAdd(i, 1)  // JNI overhead on every iteration!
+}
+
+// Better: Process in bulk on native side
+val results = nativeBulkAdd(array, 1)  // Single JNI call
+```
+
+### Security considerations
+
+Native code requires additional security attention:
+
+- **Memory safety**: Buffer overflows, use-after-free, and other memory corruption vulnerabilities
+- **No language-level protection**: Unlike Java/Kotlin, C/C++ has no built-in bounds checking
+- **Third-party dependencies**: Responsibility for security updates in native libraries
+- **Attack surface**: Native vulnerabilities can compromise the entire application
+
+<Warning>
+  Use modern C++ (C++17 or later) and safe coding practices. Consider tools like AddressSanitizer, MemorySanitizer, and static analyzers to catch memory safety issues.
+</Warning>
+
+## Development workflow
+
+Typical NDK development follows this workflow:
+
+1. **Write native code**: Implement functionality in C/C++ source files
+2. **Configure build**: Set up Android.mk, CMakeLists.txt, or Gradle build configuration
+3. **Define JNI interface**: Create native method declarations and implementations
+4. **Build shared libraries**: Compile for target ABIs (arm64-v8a, armeabi-v7a, x86_64, x86)
+5. **Load libraries**: Call `System.loadLibrary()` from Java/Kotlin
+6. **Test and debug**: Use Android Studio debugger with native debugging enabled
+
+```groovy
+// build.gradle configuration
+android {
+    defaultConfig {
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+    
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+}
+```
+
+## Best practices
+
+### Minimize JNI crossings
+
+Reduce the number of calls between Java/Kotlin and native code:
+
+- Batch operations when possible
+- Keep frequently called hot paths on one side of the boundary
+- Transfer data in bulk rather than individual items
+
+### Use appropriate data structures
+
+Choose JNI data access methods based on usage patterns:
+
+```c
+// For read-only access to large arrays
+jbyte* data = (*env)->GetPrimitiveArrayCritical(env, jarray, NULL);
+// ... process data ...
+(*env)->ReleasePrimitiveArrayCritical(env, jarray, data, JNI_ABORT);
+```
+
+### Handle errors properly
+
+Always check for JNI exceptions and NULL returns:
+
+```c
+jstring result = (*env)->NewStringUTF(env, "text");
+if (result == NULL) {
+    // Out of memory - exception is already pending
+    return NULL;
+}
+```
+
+### Profile before optimizing
+
+<Info>
+  Use Android Studio's profiling tools to identify actual bottlenecks. Many performance issues can be resolved in Java/Kotlin without native code.
+</Info>
+
+## Alternative approaches
+
+Before committing to NDK development, consider these alternatives:
+
+- **Renderscript/Compute shaders**: For parallel computation on GPU
+- **Kotlin Native**: For Kotlin-based cross-platform code
+- **WebAssembly**: For portable computation in WebView
+- **Pure Java/Kotlin optimization**: Modern JIT compilers are highly effective
+
+## Getting started
+
+To begin NDK development:
+
+1. Install the NDK through Android Studio SDK Manager
+2. Review the [JNI overview](/concepts/jni-overview) to understand the interface
+3. Learn about [ABIs](/concepts/abis) to configure your build for target architectures
+4. Understand [bionic](/concepts/bionic) differences from standard C libraries
+
+<Note>
+  Start with a simple "hello world" native library to familiarize yourself with the build process before tackling complex native functionality.
+</Note>

@@ -1,0 +1,515 @@
+---
+title: "Using CMake"
+description: "Build native code with CMake and the Android NDK toolchain"
+---
+
+CMake is a cross-platform build system that works seamlessly with the Android NDK. It provides a modern, declarative syntax for building native libraries and is the recommended build system for new NDK projects.
+
+## Getting started
+
+### Project structure
+
+A typical CMake-based NDK project:
+
+```
+app/
+└── src/
+    └── main/
+        ├── java/          # Java/Kotlin code
+        ├── cpp/           # Native code and CMake files
+        │   ├── CMakeLists.txt
+        │   ├── native-lib.cpp
+        │   └── include/
+        │       └── native-lib.h
+        └── AndroidManifest.xml
+```
+
+<Note>
+  By convention, CMake files are placed in a `cpp/` directory, but you can use any name.
+</Note>
+
+### Basic setup
+
+<Steps>
+  <Step title="Create the cpp directory">
+    Create a directory for your native code:
+    ```bash
+    mkdir -p app/src/main/cpp
+    ```
+  </Step>
+  <Step title="Create CMakeLists.txt">
+    Define your build configuration:
+    ```cmake CMakeLists.txt
+    cmake_minimum_required(VERSION 3.22.1)
+    project("myapp")
+
+    add_library(native-lib SHARED native-lib.cpp)
+
+    find_library(log-lib log)
+    target_link_libraries(native-lib ${log-lib})
+    ```
+  </Step>
+  <Step title="Configure Gradle">
+    Link CMake in your `build.gradle`:
+    ```gradle build.gradle
+    android {
+        externalNativeBuild {
+            cmake {
+                path file('src/main/cpp/CMakeLists.txt')
+                version '3.22.1'
+            }
+        }
+    }
+    ```
+  </Step>
+  <Step title="Build your project">
+    Run your Gradle build. The Android Gradle Plugin will invoke CMake automatically:
+    ```bash
+    ./gradlew assembleDebug
+    ```
+  </Step>
+</Steps>
+
+## CMakeLists.txt basics
+
+### Minimum configuration
+
+Every CMakeLists.txt needs these elements:
+
+```cmake CMakeLists.txt
+# Specify minimum CMake version
+cmake_minimum_required(VERSION 3.22.1)
+
+# Define project name
+project("myproject")
+
+# Create a library
+add_library(
+    native-lib      # Library name
+    SHARED          # Library type (SHARED or STATIC)
+    native-lib.cpp  # Source files
+)
+```
+
+### Library types
+
+<Tabs>
+  <Tab title="Shared library">
+    ```cmake
+    add_library(mylib SHARED
+        src/mylib.cpp
+        src/utils.cpp
+    )
+    ```
+    
+    Creates a `.so` file loaded at runtime.
+    
+    - Smaller APK if shared across multiple apps
+    - Can be updated independently
+    - Required for JNI libraries
+  </Tab>
+  <Tab title="Static library">
+    ```cmake
+    add_library(mylib STATIC
+        src/mylib.cpp
+        src/utils.cpp
+    )
+    ```
+    
+    Creates a `.a` file linked at compile time.
+    
+    - Code is embedded in final binary
+    - No runtime dependencies
+    - Useful for internal utility libraries
+  </Tab>
+  <Tab title="Imported library">
+    ```cmake
+    add_library(prebuilt SHARED IMPORTED)
+    set_target_properties(prebuilt PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libprebuilt.so
+    )
+    ```
+    
+    References a prebuilt library.
+    
+    - Use existing compiled libraries
+    - Supports per-ABI binaries
+  </Tab>
+</Tabs>
+
+### Adding source files
+
+```cmake CMakeLists.txt
+# List files explicitly (recommended)
+add_library(mylib SHARED
+    file1.cpp
+    file2.cpp
+    subdir/file3.cpp
+)
+
+# Use variables for organization
+set(SOURCES
+    file1.cpp
+    file2.cpp
+    subdir/file3.cpp
+)
+add_library(mylib SHARED ${SOURCES})
+
+# Use GLOB for simple projects (not recommended for large projects)
+file(GLOB SOURCES "src/*.cpp")
+add_library(mylib SHARED ${SOURCES})
+```
+
+<Warning>
+  Using `file(GLOB)` can cause CMake to miss file changes. For production projects, list source files explicitly.
+</Warning>
+
+## Configuring the build
+
+### Include directories
+
+```cmake CMakeLists.txt
+# Add include paths to a target
+target_include_directories(mylib PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/headers
+)
+
+# Export includes to dependent targets
+target_include_directories(mylib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+```
+
+### Compiler flags
+
+<Tabs>
+  <Tab title="Target-specific">
+    ```cmake
+    # Set C++ standard (recommended)
+    set_target_properties(mylib PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+
+    # Add compile options
+    target_compile_options(mylib PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+    )
+
+    # Add definitions
+    target_compile_definitions(mylib PRIVATE
+        MY_DEFINE=1
+        DEBUG_MODE
+    )
+    ```
+  </Tab>
+  <Tab title="Global">
+    ```cmake
+    # Set global C++ standard
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+    # Global compile options
+    add_compile_options(-Wall -Wextra)
+
+    # Global definitions
+    add_definitions(-DMY_GLOBAL_DEFINE)
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Prefer target-specific settings with `target_*` commands. Global settings can affect third-party dependencies unexpectedly.
+</Note>
+
+### Linking libraries
+
+```cmake CMakeLists.txt
+# Find Android system libraries
+find_library(log-lib log)
+find_library(android-lib android)
+
+# Link libraries to your target
+target_link_libraries(mylib
+    ${log-lib}
+    ${android-lib}
+)
+
+# Link with other CMake targets
+add_library(utils STATIC utils.cpp)
+target_link_libraries(mylib utils)
+
+# Link with imported libraries
+add_library(prebuilt SHARED IMPORTED)
+set_target_properties(prebuilt PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libprebuilt.so
+)
+target_link_libraries(mylib prebuilt)
+```
+
+## Android-specific CMake
+
+### Android variables
+
+The NDK toolchain provides these variables:
+
+```cmake
+# Android API level (e.g., 21, 24, 30)
+${ANDROID_PLATFORM_LEVEL}
+
+# Target ABI (armeabi-v7a, arm64-v8a, x86, x86_64)
+${ANDROID_ABI}
+
+# NDK version
+${ANDROID_NDK_MAJOR}
+${ANDROID_NDK_MINOR}
+
+# STL type (c++_shared, c++_static, none)
+${ANDROID_STL}
+```
+
+### Platform-specific code
+
+```cmake CMakeLists.txt
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    target_sources(mylib PRIVATE arm64_optimized.cpp)
+    target_compile_definitions(mylib PRIVATE USE_ARM64_OPTIMIZATIONS)
+elseif(ANDROID_ABI STREQUAL "armeabi-v7a")
+    target_sources(mylib PRIVATE arm_optimized.cpp)
+else()
+    target_sources(mylib PRIVATE generic.cpp)
+endif()
+```
+
+### Build type configuration
+
+```cmake CMakeLists.txt
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(mylib PRIVATE DEBUG_BUILD)
+    target_compile_options(mylib PRIVATE -O0 -g)
+else()
+    target_compile_definitions(mylib PRIVATE RELEASE_BUILD)
+    target_compile_options(mylib PRIVATE -O3)
+endif()
+```
+
+## Working with third-party libraries
+
+### Adding subdirectories
+
+```cmake CMakeLists.txt
+# Build third-party library from source
+add_subdirectory(external/libpng)
+target_link_libraries(mylib png)
+```
+
+### Using find_package
+
+```cmake CMakeLists.txt
+# Find library with CMake package config
+find_package(CURL REQUIRED)
+target_link_libraries(mylib CURL::libcurl)
+```
+
+### Prebuilt libraries
+
+```cmake CMakeLists.txt
+# Single prebuilt library
+add_library(ssl SHARED IMPORTED)
+set_target_properties(ssl PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libssl.so
+)
+
+# Link with your target
+target_link_libraries(mylib ssl)
+```
+
+## Multiple modules
+
+Organize complex projects with multiple libraries:
+
+```cmake CMakeLists.txt
+cmake_minimum_required(VERSION 3.22.1)
+project("multimodule")
+
+# Utility library (static)
+add_library(utils STATIC
+    utils/logging.cpp
+    utils/string_helpers.cpp
+)
+target_include_directories(utils PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils/include
+)
+
+# Core library (static)
+add_library(core STATIC
+    core/engine.cpp
+    core/renderer.cpp
+)
+target_include_directories(core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+)
+target_link_libraries(core utils)
+
+# JNI library (shared)
+add_library(myapp SHARED
+    jni/jni_bridge.cpp
+)
+find_library(log-lib log)
+target_link_libraries(myapp
+    core
+    utils
+    ${log-lib}
+)
+```
+
+## Advanced features
+
+### Custom commands
+
+```cmake CMakeLists.txt
+# Generate code at build time
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated.cpp
+    COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/scripts/codegen.py
+            --output ${CMAKE_CURRENT_BINARY_DIR}/generated.cpp
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/codegen.py
+    COMMENT "Generating code..."
+)
+
+add_library(mylib SHARED
+    main.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/generated.cpp
+)
+```
+
+### Option flags
+
+```cmake CMakeLists.txt
+# Define build options
+option(ENABLE_LOGGING "Enable debug logging" ON)
+option(USE_HARDWARE_ACCEL "Use hardware acceleration" OFF)
+
+if(ENABLE_LOGGING)
+    target_compile_definitions(mylib PRIVATE LOGGING_ENABLED)
+endif()
+
+if(USE_HARDWARE_ACCEL)
+    target_sources(mylib PRIVATE hardware_accel.cpp)
+endif()
+```
+
+### Installation rules
+
+```cmake CMakeLists.txt
+# Install library to output directory
+install(TARGETS mylib
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+# Install headers
+install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+```
+
+## Building from command line
+
+Build with CMake directly (without Gradle):
+
+```bash
+# Create build directory
+mkdir build && cd build
+
+# Configure with Android toolchain
+cmake .. \
+    -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+    -DANDROID_ABI=arm64-v8a \
+    -DANDROID_PLATFORM=android-21 \
+    -DANDROID_STL=c++_shared
+
+# Build
+cmake --build . -- -j8
+```
+
+<Note>
+  When using Gradle integration, you typically don't need to invoke CMake directly. Gradle handles the toolchain configuration automatically.
+</Note>
+
+## Common issues
+
+### CMake version mismatch
+
+```
+CMake Error: CMake 3.18 or higher is required.
+```
+
+**Solution:** Update the `version` in your build.gradle `externalNativeBuild.cmake` block:
+
+```gradle
+externalNativeBuild {
+    cmake {
+        version '3.22.1'
+    }
+}
+```
+
+### Undefined references
+
+```
+undefined reference to 'someFunction'
+```
+
+**Solutions:**
+- Ensure all source files are added to `add_library()`
+- Link required libraries with `target_link_libraries()`
+- Check library order (dependencies should come after libraries that use them)
+
+### Include path issues
+
+```
+fatal error: 'myheader.h' file not found
+```
+
+**Solution:** Add include directories with `target_include_directories()`:
+
+```cmake
+target_include_directories(mylib PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+```
+
+### ABI-specific libraries not found
+
+```
+Cannot find library libprebuilt.so
+```
+
+**Solution:** Use `${ANDROID_ABI}` to reference the correct ABI directory:
+
+```cmake
+set_target_properties(prebuilt PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libprebuilt.so
+)
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Gradle integration" icon="link" href="/build/gradle-integration">
+    Configure CMake in your Gradle build
+  </Card>
+  <Card title="Build overview" icon="book" href="/build/overview">
+    Compare CMake with ndk-build
+  </Card>
+  <Card title="ABIs" icon="microchip" href="/concepts/abis">
+    Learn about Android binary interfaces
+  </Card>
+  <Card title="Debugging" icon="bug" href="/guides/debugging">
+    Debug your CMake-built native code
+  </Card>
+</CardGroup>

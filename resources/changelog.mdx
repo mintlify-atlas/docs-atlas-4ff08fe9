@@ -1,0 +1,89 @@
+---
+title: NDK changelog
+description: Where to find NDK changelogs, major changes between versions, and deprecated features
+---
+
+Each NDK release includes changes to the toolchain, libraries, APIs, and tools. This page helps you find changelog information and understand major changes between versions.
+
+## Finding changelogs
+
+Changelogs for each NDK release are available in several locations:
+
+- **NDK Wiki** - Release notes are posted on the [NDK wiki](https://github.com/android-ndk/ndk/wiki)
+- **GitHub Releases** - Each release on the [GitHub releases page](https://github.com/android/ndk/releases) includes detailed release notes
+- **Source Repository** - Changelogs are maintained in the [AOSP NDK repository](https://android.googlesource.com/platform/ndk/+/master/)
+
+## Major changes by version
+
+<Accordion title="NDK r29">
+  For detailed changes in NDK r29, see the official release notes on the [NDK wiki](https://github.com/android-ndk/ndk/wiki).
+
+  Key areas to check:
+  - Toolchain updates (Clang/LLVM version)
+  - New API levels supported
+  - Build system improvements
+  - Bug fixes and performance improvements
+</Accordion>
+
+<Accordion title="NDK r28">
+  For detailed changes in NDK r28, see the official release notes on the [NDK wiki](https://github.com/android-ndk/ndk/wiki).
+
+  Key areas to check:
+  - Toolchain updates (Clang/LLVM version)
+  - New API levels supported
+  - Build system improvements
+  - Bug fixes and performance improvements
+</Accordion>
+
+<Accordion title="NDK r27">
+  For detailed changes in NDK r27, see the official release notes on the [NDK wiki](https://github.com/android-ndk/ndk/wiki).
+
+  Key areas to check:
+  - Toolchain updates (Clang/LLVM version)
+  - New API levels supported
+  - Build system improvements
+  - Bug fixes and performance improvements
+</Accordion>
+
+## Deprecated features
+
+<Warning>
+  The NDK regularly deprecates and removes old features, APIs, and build configurations. Always check the release notes when upgrading to see if any features you depend on have been deprecated.
+</Warning>
+
+### Common deprecations
+
+Historically, the NDK has deprecated:
+
+- Old API levels that are no longer supported by Android
+- Legacy build system features
+- Deprecated ABIs (e.g., armeabi, mips, mips64)
+- Outdated toolchain components
+
+For a complete list of deprecated features in each release, consult the changelog for that version.
+
+## API changes and compatibility
+
+Changes to the Android platform APIs available through the NDK are documented in:
+
+- [Android bionic status](https://android.googlesource.com/platform/bionic/+/master/docs/status.md) - What APIs are available in what releases and behavior changes between API levels
+- [Android changes for NDK developers](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md) - Important dynamic linker changes in various Android releases
+- [32-bit ABI bugs](https://android.googlesource.com/platform/bionic/+/master/docs/32-bit-abi.md) - Known issues for 32-bit code
+
+## Breaking changes
+
+Breaking changes are typically announced well in advance and documented in:
+
+1. The release notes for the version introducing the change
+2. The [NDK Roadmap](https://android.googlesource.com/platform/ndk/+/master/docs/Roadmap.md)
+3. Announcements on the [android-ndk Google Group](http://groups.google.com/group/android-ndk)
+
+<Warning>
+  Always test your application with new NDK releases in a development environment before deploying to production. Some changes may require code modifications.
+</Warning>
+
+## Related resources
+
+- [NDK releases](/resources/releases) - Supported versions and download links
+- [Migration guides](/resources/migration-guides) - Step-by-step guides for upgrading between versions
+- [Common problems](https://android.googlesource.com/platform/ndk/+/master/docs/user/common_problems.md) - Known issues and solutions

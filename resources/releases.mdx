@@ -1,0 +1,63 @@
+---
+title: NDK releases
+description: Information about Android NDK releases, supported versions, and download links
+---
+
+The Android NDK is released regularly with new features, bug fixes, and toolchain updates. This page provides information about NDK releases, supported versions, and where to download them.
+
+## Supported versions
+
+The NDK team maintains support for the latest stable release and preview releases. Only bugs affecting supported NDK versions will be investigated.
+
+<Accordion title="Currently supported versions">
+  The following NDK versions are currently supported:
+
+  - **r29** - Latest stable release
+  - **r28** - Stable release
+  - **r27** - Stable release
+
+  If you're using an unsupported NDK version, you should upgrade to a supported version before filing bug reports.
+</Accordion>
+
+## Checking your NDK version
+
+If you're not sure which NDK version you're using:
+
+- For Android Gradle Plugin (AGP) projects, check the `android.ndkVersion` property in your build configuration
+- For standalone installations, check the `$NDK/source.properties` file in your NDK installation directory
+
+<Warning>
+  **Unity users:** Unity often bundles older, unsupported NDK versions. Double-check your NDK version before filing bugs. If you're using an unsupported version bundled with Unity, file bugs with Unity instead.
+</Warning>
+
+## Download links
+
+The latest stable version and preview releases are available from the official NDK downloads page:
+
+- [NDK Downloads](https://github.com/android-ndk/ndk/wiki#downloads) - Official download page on the NDK wiki
+- [NDK Releases](https://github.com/android/ndk/releases) - GitHub releases page
+- [Android Developer Downloads](https://developer.android.com/ndk/downloads) - NDK downloads on developer.android.com
+
+## Release calendar
+
+For information about upcoming NDK releases and the release schedule, see the:
+
+- [NDK Release Calendar](https://github.com/android-ndk/ndk/wiki) - Official release calendar on the NDK wiki
+- [NDK Milestones](https://github.com/android/ndk/milestones) - Current and upcoming milestones
+- [NDK Roadmap](https://android.googlesource.com/platform/ndk/+/master/docs/Roadmap.md) - Long-term roadmap and planned features
+
+## Canary builds
+
+Canary builds of the NDK are available for testing upcoming features and fixes. These builds are provided as-is and may contain bugs.
+
+When reporting bugs found in canary builds:
+
+1. Select a supported version from the bug report
+2. Mention in the bug description that you found it in a canary build
+3. Include the ci.android.com build number
+
+## Related resources
+
+- [Changelog](/resources/changelog) - Details about changes in each NDK release
+- [Migration guides](/resources/migration-guides) - Guides for upgrading between NDK versions
+- [NDK Guides](https://developer.android.com/ndk/guides/) - Official NDK documentation and tutorials

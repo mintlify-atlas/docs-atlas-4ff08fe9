@@ -1,0 +1,518 @@
+---
+title: "Profiling native code"
+description: "Optimize performance with Simpleperf, systrace, and Android profiling tools"
+---
+
+Profiling helps identify performance bottlenecks in native code, enabling you to optimize CPU usage, memory allocation, and overall application performance.
+
+## Profiling tools overview
+
+The NDK and Android platform provide several profiling tools:
+
+- **Simpleperf** - CPU profiling tool for native code, part of the NDK
+- **Android Studio Profiler** - Visual profiling with native support
+- **Perfetto/Systrace** - System-wide performance tracing
+- **Heapprofd** - Native memory profiling
+
+<Tip>
+Start with Android Studio Profiler for quick insights, then use Simpleperf for detailed CPU analysis.
+</Tip>
+
+## Preparing for profiling
+
+### Enable profiling in your build
+
+In `build.gradle`:
+
+```groovy
+android {
+    buildTypes {
+        release {
+            // Enable profiling in release builds
+            debuggable false
+            minifyEnabled true
+            profileable true  // Android 10+ (API level 29)
+        }
+    }
+}
+```
+
+For CMake builds:
+
+```cmake
+# Keep frame pointers for better stack traces
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer")
+
+# Add debug symbols without optimization reduction
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+```
+
+<Note>
+Frame pointers slightly increase binary size but provide much better profiling data.
+</Note>
+
+## CPU profiling with Simpleperf
+
+Simpleperf is a command-line profiling tool that uses the CPU's performance monitoring unit (PMU).
+
+### Installing Simpleperf
+
+```bash
+# Simpleperf is included in the NDK
+cd $NDK_PATH/simpleperf
+
+# Or download standalone version
+git clone https://android.googlesource.com/platform/system/extras
+cd extras/simpleperf
+```
+
+### Recording CPU profile
+
+<Steps>
+<Step title="Push Simpleperf to device">
+
+```bash
+adb push $NDK_PATH/simpleperf/bin/android/arm64/simpleperf /data/local/tmp/
+adb shell chmod +x /data/local/tmp/simpleperf
+```
+
+</Step>
+
+<Step title="Record profile data">
+
+```bash
+# Profile the entire app
+adb shell /data/local/tmp/simpleperf record -p $(adb shell pidof your.package.name) -o /data/local/tmp/perf.data
+
+# Profile for specific duration
+adb shell /data/local/tmp/simpleperf record --duration 10 -p $(adb shell pidof your.package.name) -o /data/local/tmp/perf.data
+
+# Profile with call graph
+adb shell /data/local/tmp/simpleperf record -g -p $(adb shell pidof your.package.name) -o /data/local/tmp/perf.data
+```
+
+</Step>
+
+<Step title="Pull profile data">
+
+```bash
+adb pull /data/local/tmp/perf.data .
+```
+
+</Step>
+
+<Step title="Generate report">
+
+```bash
+# Text report
+$NDK_PATH/simpleperf/report.py -i perf.data
+
+# Generate flamegraph (requires FlameGraph scripts)
+$NDK_PATH/simpleperf/report.py -i perf.data -g | FlameGraph/flamegraph.pl > flame.svg
+
+# Interactive HTML report
+$NDK_PATH/simpleperf/report_html.py -i perf.data
+```
+
+</Step>
+</Steps>
+
+### Interpreting Simpleperf output
+
+Text report shows function-level CPU usage:
+
+```
+Overhead  Command   Shared Object     Symbol
+  45.23%  myapp     libmyapp.so       [.] processData
+  23.45%  myapp     libmyapp.so       [.] calculateResult
+  12.34%  myapp     libc.so           [.] memcpy
+   8.90%  myapp     libmyapp.so       [.] render
+```
+
+- **Overhead** - Percentage of CPU time spent in this function
+- **Symbol** - Function name (symbolicated if debug symbols available)
+
+<Tip>
+Focus optimization efforts on functions with high overhead percentages.
+</Tip>
+
+### Advanced Simpleperf options
+
+```bash
+# Profile specific events
+adb shell /data/local/tmp/simpleperf record -e cpu-cycles,cache-misses -p PID
+
+# Sample at higher frequency (default: 4000 Hz)
+adb shell /data/local/tmp/simpleperf record -f 8000 -p PID
+
+# Profile only specific thread
+adb shell /data/local/tmp/simpleperf record -t TID
+
+# Record with symbols (copies libraries from device)
+$NDK_PATH/simpleperf/app_profiler.py -p your.package.name
+```
+
+## Profiling with Android Studio
+
+### CPU profiler
+
+<Steps>
+<Step title="Open the Profiler">
+
+View > Tool Windows > Profiler
+
+</Step>
+
+<Step title="Start CPU recording">
+
+Click **CPU** timeline, then click **Record**. Choose:
+- **Java/Kotlin Method Trace** - For Java/Kotlin profiling
+- **System Trace** - For native and system profiling
+- **Sampled (Native)** - For native code sampling
+
+</Step>
+
+<Step title="Perform operations">
+
+Interact with your app to trigger the code you want to profile.
+
+</Step>
+
+<Step title="Stop and analyze">
+
+Click **Stop**. The profiler displays:
+- Flame chart - Visualize call stack over time
+- Top Down/Bottom Up - Function call hierarchy
+- Call Chart - Timeline of function calls
+
+</Step>
+</Steps>
+
+### Memory profiler
+
+Profile native memory allocations:
+
+1. Open Memory Profiler
+2. Click **Record native allocations**
+3. Perform operations
+4. Stop recording
+5. Analyze allocation call stacks
+
+<Note>
+Native memory profiling requires Android 10+ (API level 29) and a profileable or debuggable app.
+</Note>
+
+## System-wide tracing with Perfetto
+
+Perfetto (successor to systrace) provides system-wide performance traces.
+
+### Recording a trace
+
+#### Using command line
+
+```bash
+# Record 10-second trace
+adb shell perfetto -o /data/misc/perfetto-traces/trace.perfetto-trace \
+  -t 10s sched freq idle am wm gfx view binder_driver hal dalvik camera input res memory
+
+# Pull trace
+adb pull /data/misc/perfetto-traces/trace.perfetto-trace .
+```
+
+#### Using System Tracing app
+
+1. Install **System Tracing** app from Play Store
+2. Open app and tap **Record trace**
+3. Select categories and duration
+4. Perform operations in your app
+5. Stop recording and share trace file
+
+### Analyzing traces
+
+Open trace at [ui.perfetto.dev](https://ui.perfetto.dev):
+
+- View thread activity over time
+- Identify frame drops and jank
+- Analyze scheduling and CPU usage
+- Inspect native function calls
+
+<Tip>
+Use the search function to find specific events or thread names.
+</Tip>
+
+## Adding custom trace points
+
+### Native tracing with ATrace
+
+```cpp
+#include <android/trace.h>
+
+void processData() {
+    // Start trace section
+    ATrace_beginSection("ProcessData");
+    
+    // Your code here
+    for (int i = 0; i < size; i++) {
+        ATrace_beginSection("ProcessItem");
+        processItem(i);
+        ATrace_endSection();
+    }
+    
+    ATrace_endSection();
+}
+```
+
+Add to `CMakeLists.txt`:
+
+```cmake
+find_library(android-lib android)
+target_link_libraries(your-app ${android-lib})
+```
+
+### Scoped tracing helper
+
+```cpp
+class ScopedTrace {
+public:
+    ScopedTrace(const char* name) {
+        ATrace_beginSection(name);
+    }
+    
+    ~ScopedTrace() {
+        ATrace_endSection();
+    }
+};
+
+// Use with RAII
+void myFunction() {
+    ScopedTrace trace("myFunction");
+    // Automatically ends when trace goes out of scope
+}
+```
+
+## Identifying performance bottlenecks
+
+### CPU bottlenecks
+
+Look for:
+
+- Functions with high overhead in Simpleperf
+- Long-running operations blocking UI thread
+- Inefficient algorithms (O(n²) when O(n log n) possible)
+
+```cpp
+// Bad: O(n²) algorithm
+for (int i = 0; i < n; i++) {
+    for (int j = 0; j < n; j++) {
+        if (array[i] == array[j] && i != j) {
+            // Found duplicate
+        }
+    }
+}
+
+// Good: O(n) using hash set
+std::unordered_set<int> seen;
+for (int i = 0; i < n; i++) {
+    if (seen.count(array[i])) {
+        // Found duplicate
+    }
+    seen.insert(array[i]);
+}
+```
+
+### Memory bottlenecks
+
+Look for:
+
+- Frequent allocations in hot paths
+- Memory leaks (growing memory usage)
+- Cache misses
+
+```cpp
+// Bad: Allocating in loop
+for (int i = 0; i < iterations; i++) {
+    float* temp = new float[size];
+    process(temp);
+    delete[] temp;
+}
+
+// Good: Reuse allocation
+float* temp = new float[size];
+for (int i = 0; i < iterations; i++) {
+    process(temp);
+}
+delete[] temp;
+```
+
+### I/O bottlenecks
+
+Look for:
+
+- File operations on main thread
+- Synchronous network calls
+- Excessive logging
+
+<Warning>
+Never perform I/O operations in audio or rendering callbacks - they must complete in microseconds.
+</Warning>
+
+## Optimization techniques
+
+### Use NEON SIMD instructions
+
+```cpp
+#include <arm_neon.h>
+
+// Multiply arrays with NEON (processes 4 floats at once)
+void multiplyArraysNEON(const float* a, const float* b, float* result, int count) {
+    int i = 0;
+    for (; i <= count - 4; i += 4) {
+        float32x4_t va = vld1q_f32(a + i);
+        float32x4_t vb = vld1q_f32(b + i);
+        float32x4_t vresult = vmulq_f32(va, vb);
+        vst1q_f32(result + i, vresult);
+    }
+    
+    // Handle remaining elements
+    for (; i < count; i++) {
+        result[i] = a[i] * b[i];
+    }
+}
+```
+
+### Enable compiler optimizations
+
+```cmake
+# Use -O3 for maximum optimization
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+
+# Enable link-time optimization
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+```
+
+### Reduce memory allocations
+
+```cpp
+// Use object pooling for frequently created objects
+class ObjectPool {
+public:
+    Object* acquire() {
+        if (!pool.empty()) {
+            Object* obj = pool.back();
+            pool.pop_back();
+            return obj;
+        }
+        return new Object();
+    }
+    
+    void release(Object* obj) {
+        obj->reset();
+        pool.push_back(obj);
+    }
+    
+private:
+    std::vector<Object*> pool;
+};
+```
+
+### Cache-friendly data structures
+
+```cpp
+// Bad: Array of structures (poor cache locality)
+struct Particle {
+    float x, y, z;
+    float vx, vy, vz;
+    float r, g, b, a;
+};
+Particle particles[10000];
+
+// Good: Structure of arrays (better cache locality)
+struct ParticleSystem {
+    float x[10000], y[10000], z[10000];
+    float vx[10000], vy[10000], vz[10000];
+    float r[10000], g[10000], b[10000], a[10000];
+};
+```
+
+<Tip>
+Structure of arrays (SoA) often improves performance when processing large amounts of data.
+</Tip>
+
+## Benchmarking
+
+Measure performance consistently:
+
+```cpp
+#include <chrono>
+
+class Benchmark {
+public:
+    void start() {
+        startTime = std::chrono::high_resolution_clock::now();
+    }
+    
+    double elapsedMs() {
+        auto end = std::chrono::high_resolution_clock::now();
+        return std::chrono::duration<double, std::milli>(end - startTime).count();
+    }
+    
+private:
+    std::chrono::high_resolution_clock::time_point startTime;
+};
+
+// Usage
+Benchmark bench;
+bench.start();
+processData();
+LOGD("Processing took %.2f ms", bench.elapsedMs());
+```
+
+### Automated benchmarking
+
+Use Google Benchmark library:
+
+```cpp
+#include <benchmark/benchmark.h>
+
+static void BM_ProcessData(benchmark::State& state) {
+    // Setup
+    std::vector<int> data(state.range(0));
+    
+    // Benchmark loop
+    for (auto _ : state) {
+        processData(data.data(), data.size());
+    }
+    
+    // Report throughput
+    state.SetItemsProcessed(state.iterations() * state.range(0));
+}
+
+BENCHMARK(BM_ProcessData)->Range(8, 8<<10);
+
+BENCHMARK_MAIN();
+```
+
+## Best practices
+
+- **Profile on real devices** - Emulator performance doesn't match real hardware
+- **Profile release builds** - Debug builds can be 10x slower
+- **Profile representative workloads** - Test with realistic data and usage patterns
+- **Use frame pointers** - Enable for better stack traces in profiling
+- **Focus on hot paths** - Optimize code that runs frequently
+- **Measure before and after** - Verify optimizations actually improve performance
+- **Consider battery impact** - Balance performance with power consumption
+- **Test on low-end devices** - Ensure acceptable performance on minimum-spec devices
+
+<Note>
+Premature optimization is the root of all evil. Profile first, then optimize the actual bottlenecks.
+</Note>
+
+## Additional resources
+
+- [Simpleperf Documentation](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/README.md) - Comprehensive Simpleperf guide
+- [Android Profiler](https://developer.android.com/studio/profile/android-profiler) - Android Studio profiling tools
+- [Perfetto Documentation](https://perfetto.dev/docs/) - System tracing with Perfetto
+- [ARM NEON Reference](https://developer.arm.com/architectures/instruction-sets/simd-isas/neon) - SIMD optimization guide

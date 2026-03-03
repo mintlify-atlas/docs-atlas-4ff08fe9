@@ -1,0 +1,546 @@
+---
+title: "Gradle integration"
+description: "Integrate NDK builds with the Android Gradle Plugin"
+---
+
+The Android Gradle Plugin seamlessly integrates ndk-build and CMake into your Android app build process. This allows you to build native libraries alongside your Java/Kotlin code with a single `./gradlew` command.
+
+## Configuration overview
+
+Gradle integration happens in your module's `build.gradle` or `build.gradle.kts` file through the `externalNativeBuild` block:
+
+<Tabs>
+  <Tab title="CMake">
+    ```gradle build.gradle
+    android {
+        externalNativeBuild {
+            cmake {
+                path file('src/main/cpp/CMakeLists.txt')
+                version '3.22.1'
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="ndk-build">
+    ```gradle build.gradle
+    android {
+        externalNativeBuild {
+            ndkBuild {
+                path file('src/main/jni/Android.mk')
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## NDK version
+
+Specify the NDK version to ensure consistent builds across development machines:
+
+```gradle build.gradle
+android {
+    ndkVersion "26.1.10909125"
+    
+    // Or use a semantic version
+    ndkVersion "26.1.+"
+}
+```
+
+<Note>
+  If `ndkVersion` is not specified, Gradle uses the highest installed NDK version. Always specify the version for reproducible builds.
+</Note>
+
+### Finding your NDK version
+
+```bash
+# List installed NDK versions
+ls $ANDROID_SDK_ROOT/ndk/
+
+# Check version in the NDK directory
+cat $ANDROID_SDK_ROOT/ndk/26.1.10909125/source.properties
+```
+
+## Build configuration
+
+### Basic externalNativeBuild
+
+<Tabs>
+  <Tab title="CMake">
+    ```gradle build.gradle
+    android {
+        compileSdk 34
+        ndkVersion "26.1.10909125"
+
+        defaultConfig {
+            applicationId "com.example.myapp"
+            minSdk 21
+            targetSdk 34
+
+            externalNativeBuild {
+                cmake {
+                    cppFlags '-std=c++17 -Wall'
+                    arguments '-DANDROID_STL=c++_shared'
+                }
+            }
+        }
+
+        externalNativeBuild {
+            cmake {
+                path file('src/main/cpp/CMakeLists.txt')
+                version '3.22.1'
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="ndk-build">
+    ```gradle build.gradle
+    android {
+        compileSdk 34
+        ndkVersion "26.1.10909125"
+
+        defaultConfig {
+            applicationId "com.example.myapp"
+            minSdk 21
+            targetSdk 34
+
+            externalNativeBuild {
+                ndkBuild {
+                    cFlags '-Wall'
+                    cppFlags '-std=c++17'
+                    arguments 'APP_STL=c++_shared'
+                }
+            }
+        }
+
+        externalNativeBuild {
+            ndkBuild {
+                path file('src/main/jni/Android.mk')
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### ABI filters
+
+Control which ABIs to build:
+
+```gradle build.gradle
+android {
+    defaultConfig {
+        ndk {
+            // Build only for these ABIs
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+}
+```
+
+<Warning>
+  Google Play requires 64-bit support. Always include `arm64-v8a` and `x86_64` if you support x86.
+</Warning>
+
+### Build variants
+
+Configure builds differently for debug and release:
+
+```gradle build.gradle
+android {
+    buildTypes {
+        release {
+            minifyEnabled true
+            externalNativeBuild {
+                cmake {
+                    cppFlags '-O3 -DNDEBUG'
+                    arguments '-DCMAKE_BUILD_TYPE=Release'
+                }
+            }
+        }
+        debug {
+            externalNativeBuild {
+                cmake {
+                    cppFlags '-O0 -g -DDEBUG'
+                    arguments '-DCMAKE_BUILD_TYPE=Debug'
+                }
+            }
+        }
+    }
+}
+```
+
+## Advanced configuration
+
+### Multiple ABIs with product flavors
+
+Create separate APKs for different ABIs:
+
+```gradle build.gradle
+android {
+    flavorDimensions 'abi'
+    
+    productFlavors {
+        arm {
+            dimension 'abi'
+            ndk {
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
+            }
+        }
+        x86 {
+            dimension 'abi'
+            ndk {
+                abiFilters 'x86', 'x86_64'
+            }
+        }
+        universal {
+            dimension 'abi'
+            ndk {
+                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            }
+        }
+    }
+}
+```
+
+### CMake arguments
+
+Pass arguments to CMake:
+
+```gradle build.gradle
+android {
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                // Define CMake cache variables
+                arguments '-DANDROID_STL=c++_shared',
+                          '-DENABLE_LOGGING=ON',
+                          '-DUSE_HARDWARE_ACCEL=OFF'
+                
+                // Set C/C++ flags
+                cFlags '-Wall', '-Wextra'
+                cppFlags '-std=c++17', '-frtti', '-fexceptions'
+            }
+        }
+    }
+}
+```
+
+### ndk-build arguments
+
+Pass arguments to ndk-build:
+
+```gradle build.gradle
+android {
+    defaultConfig {
+        externalNativeBuild {
+            ndkBuild {
+                // Pass arguments to ndk-build
+                arguments 'APP_STL=c++_shared',
+                          'APP_PLATFORM=android-21',
+                          'V=1'  // Verbose output
+                
+                // Set compiler flags
+                cFlags '-Wall'
+                cppFlags '-std=c++17'
+            }
+        }
+    }
+}
+```
+
+### Targets configuration
+
+Build specific CMake targets:
+
+```gradle build.gradle
+android {
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+    
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                // Build only these targets (skip others)
+                targets 'native-lib', 'core-engine'
+            }
+        }
+    }
+}
+```
+
+## Packaging native libraries
+
+### Automatic packaging
+
+By default, Gradle packages all built `.so` files into your APK/AAB:
+
+```gradle build.gradle
+android {
+    // Libraries are automatically included
+    // from build output directories
+}
+```
+
+### JNI libs directories
+
+Include additional prebuilt libraries:
+
+```gradle build.gradle
+android {
+    sourceSets {
+        main {
+            jniLibs.srcDirs = [
+                'src/main/jniLibs',
+                'libs'
+            ]
+        }
+    }
+}
+```
+
+Place prebuilt libraries in ABI-specific directories:
+
+```
+src/main/jniLibs/
+├── arm64-v8a/
+│   └── libprebuilt.so
+├── armeabi-v7a/
+│   └── libprebuilt.so
+├── x86/
+│   └── libprebuilt.so
+└── x86_64/
+    └── libprebuilt.so
+```
+
+### Excluding libraries
+
+Exclude specific libraries from packaging:
+
+```gradle build.gradle
+android {
+    packagingOptions {
+        jniLibs {
+            // Exclude debug libraries from release builds
+            excludes += ['**/libdebug_*.so']
+        }
+    }
+}
+```
+
+## Build performance
+
+### Parallel builds
+
+Enable parallel CMake builds:
+
+```gradle gradle.properties
+# Enable parallel CMake builds
+android.native.buildOutput=verbose
+org.gradle.parallel=true
+org.gradle.workers.max=4
+```
+
+### Build caching
+
+Enable build caching for faster incremental builds:
+
+```gradle gradle.properties
+# Enable build cache
+org.gradle.caching=true
+android.enableBuildCache=true
+```
+
+### Selective ABI builds
+
+For development, build only one ABI:
+
+```gradle build.gradle
+android {
+    // In local.properties, add:
+    // abiFilters=arm64-v8a
+    
+    def localProperties = new Properties()
+    def localPropertiesFile = rootProject.file('local.properties')
+    if (localPropertiesFile.exists()) {
+        localProperties.load(new FileInputStream(localPropertiesFile))
+    }
+    
+    defaultConfig {
+        def abiFiltersFromProps = localProperties.getProperty('abiFilters')
+        if (abiFiltersFromProps) {
+            ndk {
+                abiFilters abiFiltersFromProps.split(',')
+            }
+        } else {
+            ndk {
+                abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+            }
+        }
+    }
+}
+```
+
+<Note>
+  Add `local.properties` to your `.gitignore` to keep per-developer settings local.
+</Note>
+
+## Debugging build issues
+
+### Verbose output
+
+Enable verbose build output:
+
+<Tabs>
+  <Tab title="CMake">
+    ```gradle build.gradle
+    android {
+        defaultConfig {
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_VERBOSE_MAKEFILE=ON'
+                }
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="ndk-build">
+    ```gradle build.gradle
+    android {
+        defaultConfig {
+            externalNativeBuild {
+                ndkBuild {
+                    arguments 'V=1'
+                }
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Build output location
+
+Find generated build files:
+
+```bash
+# CMake build outputs
+app/build/intermediates/cmake/
+
+# ndk-build outputs
+app/build/intermediates/ndkBuild/
+
+# Final packaged libraries
+app/build/intermediates/stripped_native_libs/
+app/build/intermediates/merged_native_libs/
+```
+
+### Clean native builds
+
+```bash
+# Clean only native builds
+./gradlew clean
+
+# Or manually delete build intermediates
+rm -rf app/build/intermediates/cmake/
+rm -rf app/build/intermediates/ndkBuild/
+```
+
+## Common issues
+
+### NDK not found
+
+```
+NDK is not installed
+```
+
+**Solution:** Install the NDK through Android Studio SDK Manager or specify the path:
+
+```gradle local.properties
+ndk.dir=/path/to/android-sdk/ndk/26.1.10909125
+```
+
+### Version conflicts
+
+```
+CMake version mismatch
+```
+
+**Solution:** Ensure the CMake version in `build.gradle` matches the installed version:
+
+```gradle
+externalNativeBuild {
+    cmake {
+        version '3.22.1'  // Must match installed version
+    }
+}
+```
+
+### Missing libraries at runtime
+
+```
+java.lang.UnsatisfiedLinkError: couldn't find "libnative-lib.so"
+```
+
+**Solutions:**
+- Ensure the library is built for the device's ABI
+- Check that `abiFilters` includes the device's ABI
+- Verify the library name matches what you load with `System.loadLibrary()`
+
+### Build cache issues
+
+```
+Incorrect native library in APK
+```
+
+**Solution:** Clean and rebuild:
+
+```bash
+./gradlew clean
+rm -rf app/build/intermediates/
+./gradlew assembleDebug
+```
+
+## Best practices
+
+<Steps>
+  <Step title="Pin your NDK version">
+    Always specify `ndkVersion` in build.gradle for reproducible builds across team members and CI.
+  </Step>
+  <Step title="Use specific ABI filters for development">
+    Build only one ABI during development for faster iteration, but build all ABIs for release.
+  </Step>
+  <Step title="Separate debug and release configurations">
+    Use different compiler flags and optimizations for debug vs release builds.
+  </Step>
+  <Step title="Enable build caching">
+    Configure Gradle build cache to speed up incremental builds.
+  </Step>
+  <Step title="Version control your configuration">
+    Commit build.gradle with NDK settings. Keep local.properties out of version control.
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="CMake" icon="cube" href="/build/cmake">
+    Learn CMake configuration for NDK
+  </Card>
+  <Card title="ndk-build" icon="hammer" href="/build/ndk-build">
+    Learn ndk-build configuration
+  </Card>
+  <Card title="ABIs" icon="microchip" href="/concepts/abis">
+    Understand Android binary interfaces
+  </Card>
+  <Card title="Debugging" icon="bug" href="/guides/debugging">
+    Debug native code in your app
+  </Card>
+</CardGroup>

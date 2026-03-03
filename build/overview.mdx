@@ -1,0 +1,194 @@
+---
+title: "Build systems overview"
+description: "Learn about NDK build systems and choose the right one for your project"
+---
+
+The Android NDK provides multiple build system options for compiling native code. Understanding the differences helps you choose the right tool for your project.
+
+## Available build systems
+
+The NDK supports two primary build systems:
+
+<CardGroup cols={2}>
+  <Card title="ndk-build" icon="hammer" href="/build/ndk-build">
+    Traditional NDK build system using Android.mk files
+  </Card>
+  <Card title="CMake" icon="cube" href="/build/cmake">
+    Cross-platform build system with modern syntax
+  </Card>
+</CardGroup>
+
+Both systems integrate with the Android Gradle Plugin to build your native libraries alongside your Android app.
+
+## Comparison
+
+<Tabs>
+  <Tab title="ndk-build">
+    **Pros:**
+    - Simple syntax for Android-specific builds
+    - Direct NDK integration with built-in variables
+    - Smaller learning curve for simple projects
+    - Extensive documentation and examples
+
+    **Cons:**
+    - Android-specific, not portable to other platforms
+    - Limited functionality compared to CMake
+    - Based on GNU Make syntax
+    - Less flexible for complex build configurations
+
+    **Best for:**
+    - Android-only projects
+    - Simple native libraries
+    - Legacy codebases using Android.mk
+  </Tab>
+  <Tab title="CMake">
+    **Pros:**
+    - Cross-platform compatibility
+    - Modern, declarative syntax
+    - Extensive third-party library support
+    - Better IDE integration and tooling
+    - More flexible for complex projects
+
+    **Cons:**
+    - Steeper learning curve
+    - Requires understanding of toolchain files
+    - More verbose for simple projects
+
+    **Best for:**
+    - Cross-platform libraries
+    - Complex build requirements
+    - Projects using third-party CMake libraries
+    - Teams familiar with CMake
+  </Tab>
+</Tabs>
+
+## Choosing a build system
+
+Use this decision tree to select the appropriate build system:
+
+<Steps>
+  <Step title="Evaluate portability needs">
+    If your native code needs to run on multiple platforms (iOS, desktop, etc.), choose **CMake** for cross-platform compatibility.
+  </Step>
+  <Step title="Consider existing codebase">
+    If you have existing Android.mk files or a legacy ndk-build setup, you can continue using **ndk-build** or migrate to CMake.
+  </Step>
+  <Step title="Assess complexity">
+    For simple Android-only libraries with straightforward build requirements, **ndk-build** may be sufficient. For complex dependencies and build configurations, **CMake** provides more flexibility.
+  </Step>
+  <Step title="Check team expertise">
+    If your team has experience with CMake from other projects, leverage that knowledge. Otherwise, ndk-build's simpler syntax may be easier to learn.
+  </Step>
+</Steps>
+
+<Note>
+  Google recommends CMake for new projects due to its cross-platform nature and industry-standard tooling.
+</Note>
+
+## Build system features
+
+### Module support
+
+Both build systems support building multiple native modules:
+
+- **Static libraries** (.a) - Linked at compile time
+- **Shared libraries** (.so) - Loaded at runtime
+- **Executables** - For command-line tools
+
+### ABI management
+
+Both systems can target multiple Android ABIs:
+
+```gradle
+android {
+    defaultConfig {
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+}
+```
+
+<Warning>
+  Building for all ABIs increases APK size. Target only the ABIs your users need.
+</Warning>
+
+### Compiler flags and optimizations
+
+Both systems allow you to customize:
+
+- Compiler flags (warnings, optimizations)
+- Preprocessor definitions
+- Include paths
+- Linker flags and library dependencies
+
+## Integration with Gradle
+
+Both build systems integrate with the Android Gradle Plugin through the `externalNativeBuild` configuration:
+
+<Tabs>
+  <Tab title="ndk-build">
+    ```gradle build.gradle
+    android {
+        externalNativeBuild {
+            ndkBuild {
+                path file('src/main/jni/Android.mk')
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="CMake">
+    ```gradle build.gradle
+    android {
+        externalNativeBuild {
+            cmake {
+                path file('src/main/cpp/CMakeLists.txt')
+                version '3.22.1'
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+See [Gradle integration](/build/gradle-integration) for complete configuration details.
+
+## Migration between systems
+
+You can migrate from ndk-build to CMake when needed:
+
+<Steps>
+  <Step title="Convert module definitions">
+    Transform Android.mk module definitions into CMakeLists.txt targets using `add_library()` commands.
+  </Step>
+  <Step title="Map variables">
+    Convert NDK-specific variables to CMake equivalents. For example, `LOCAL_SRC_FILES` becomes the source list in `add_library()`.
+  </Step>
+  <Step title="Update dependencies">
+    Convert `LOCAL_SHARED_LIBRARIES` and `LOCAL_STATIC_LIBRARIES` to `target_link_libraries()` calls.
+  </Step>
+  <Step title="Update Gradle configuration">
+    Change `externalNativeBuild.ndkBuild` to `externalNativeBuild.cmake` in your build.gradle file.
+  </Step>
+  <Step title="Test thoroughly">
+    Verify that all modules build correctly and run your test suite to ensure functionality is preserved.
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Using ndk-build" icon="hammer" href="/build/ndk-build">
+    Learn about Android.mk and Application.mk files
+  </Card>
+  <Card title="Using CMake" icon="cube" href="/build/cmake">
+    Configure CMake for Android NDK projects
+  </Card>
+  <Card title="Gradle integration" icon="link" href="/build/gradle-integration">
+    Integrate native builds with Android Gradle
+  </Card>
+  <Card title="ABIs" icon="microchip" href="/concepts/abis">
+    Understand Android binary interfaces
+  </Card>
+</CardGroup>
